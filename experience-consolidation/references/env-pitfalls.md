@@ -44,7 +44,7 @@
 - 触发条件：文件为 UTF-8 **无 BOM**、内容含非 ASCII 字符、读取时未显式指定 `-Encoding`。
 - 根因：PS 5.1 默认编码为系统 ACP（本机 = 936/GBK）；多字节解码时部分字节序列吞掉了后续的 `0x0A`，因此既乱码又丢行。文件本身是严格合法 UTF-8（`UTF8Encoding($false,$true).GetString()` 校验通过），缺陷在读取方而非文件。
 - 方案：读取用 `Get-Content -Encoding utf8`，或 `[System.IO.File]::ReadAllText($path, [System.Text.Encoding]::UTF8)`；`.ps1` 脚本必须存为**带 BOM 的 UTF-8**（见 ENV-003）；由 Node/pnpm 侧消费的数据文件（如本 `SKILL.md`）保持无 BOM 的 UTF-8 即可，不要为迁就 PS 5.1 而加 BOM。
-- 验证信号：两种读法解出的中文与 `read` 工具输出逐字一致；且行数与文件内 `0x0A` 字节数相等（本文件 = 151，追加条目后需同步更新此数）。
+- 验证信号：两种读法解出的中文与 `read` 工具输出逐字一致；且行数与文件内 `0x0A` 字节数相等（**动态核对，绝不把该数字写死**——本条曾因写死常量而自身失效）。
 
 **[ENV-006] 沙箱禁止命名管道会击穿 Chromium/Electron 的渲染进程（表现为「白屏」）**
 - 适用环境：Windows + DSH 沙箱（非 danger-full-access） ｜ 最后验证：见 `edge-browser-testing`（2026-09-18 实测；本库未独立复核）
