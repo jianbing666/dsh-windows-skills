@@ -3,5 +3,3 @@ drawio-skill-main/
 video-podcast-maker-main/
 # 版本控制之前的备份做法
 *.bak-*
-# 旧 .git 的留存目录（含历史泄漏片段，永不入库）
-.git-tainted-*/
