@@ -12,7 +12,7 @@
     1. 目录税（ENV-024）：技能条目数 + 各技能 name/description 字符数
     2. 避坑条目：总数 + 可机读的复核状态 + **90 天过期清单**（B5 结构化后才真正可算）
     3. 条目体积：超过 ≤8 行上限的条目
-    4. 悬空指针：「相关技能：X」/「正文以 X 为准」里的 X 技能是否真实存在
+    4. 悬空指针：「相关技能：X」/「正文以 X 为准」/「详见 `X`」/「最后验证：见 `X`」里的 X 技能是否存在
     5. ENV-005 动态不变式：**逐文件**严格 UTF-8 解码 && 行结构未被吞掉
     6. 债务：标了「⚠ 待并入 <技能>」的条目数
     7. 退役候选（B10）：满足 K1 冗余 ∧ K2 已自证 的条目，并预告「归档后哪些域文件会变空」
@@ -154,8 +154,10 @@ foreach ($e in $dated) {
 $stale = @($aged | Where-Object { $null -ne $_.AgeDays -and $_.AgeDays -gt $StaleDays })
 $newest = $aged | Sort-Object AgeDays | Select-Object -First 1
 
-# 悬空指针
-$refRe = [regex]'(?:相关技能|正文以)\s*[:：]?\s*`([a-z0-9][a-z0-9-]+)`'
+# 悬空指针：四种真实出现的引用形态都要覆盖。
+# 2026-10-11 实测缺口：只匹配「相关技能 / 正文以」时全库只看到 2 个技能，而「最后验证：见 `X`」
+# 才是最主要的委托形态（10 条）——漏掉它，报告就在最关键的一项上失真。
+$refRe = [regex]'(?:相关技能|正文以|详见|见)\s*[:：]?\s*`([a-z0-9][a-z0-9-]+)`'
 $refs = @{}
 foreach ($m in $refRe.Matches($kbText)) { $refs[$m.Groups[1].Value] = $true }
 $dangling = @()
@@ -292,7 +294,7 @@ if ($oversized.Count -eq 0) { Write-Host '    全部合规' }
 else { foreach ($o in $oversized) { Write-Host ("      {0}  {1} 行  {2}" -f $o.Id, $o.Lines, $o.Title) } }
 
 Write-Host ''
-Write-Host '[4] 悬空指针（「相关技能：X」/「正文以 X 为准」）'
+Write-Host '[4] 悬空指针（相关技能：X / 正文以 X 为准 / 详见 `X` / 最后验证：见 `X`）'
 if ($dangling.Count -eq 0) { Write-Host ("    全部可解析（引用了 {0} 个技能）" -f $refs.Count) }
 else { foreach ($d in $dangling) { Write-Host ("      ❌ 找不到技能: {0}" -f $d) } }
 
