@@ -36,7 +36,7 @@
   auto：.ps1 强制带 BOM；其余扩展名沿用输入文件原有的 BOM 状态。
 
 .EXAMPLE
-  .\safe-edit.ps1 -Path ..\references\env-pitfalls.md -Spec .\b1.json -WhatIf
+  .\safe-edit.ps1 -Path ..\references\pitfalls\powershell.md -Spec .\b1.json -WhatIf
 
 .NOTES
   退出码

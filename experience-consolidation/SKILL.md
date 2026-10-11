@@ -42,7 +42,7 @@ metadata:
 - 剥离表象，寻找本质。例如：报错 `Cannot find module` 是因为版本不兼容，还是因为沙箱权限拒绝创建管道？
 - 进行**最小化复现**：剥离无关业务代码，只保留触发报错的最短路径。
 - 查阅官方 Issue、社区 Discussion 或已有 Skill 文档，判断是已知 Bug 还是环境特例。
-- **先查已有资产**：`~/.dsh/skills/` 与 `references/env-pitfalls.md` 中是否已有同一条，避免重复分析。
+- **先查已有资产**：先读 `references/index.md`（索引，便宜）定位域文件，再判断**那一个**域里是否已有同一条——**不要**把 8 个域文件一起读进来。
 
 ### 阶段三：方案验证（Validate）
 - 提出至少一个**临时绕过方案**和一个**长期修复方案**。
@@ -90,7 +90,7 @@ metadata:
 问题解决后，必须判断该经验的价值：
 - **如果是通用问题**：新建独立技能（如 `edge-browser-testing`），把排错过程、约束、启动脚本沉淀进它的 `SKILL.md`。**有门槛**：只有会被反复独立使用才开——技能名与描述每轮都注入目录，是固定长期成本（见 ENV-024）。
 - **如果是特定环境的记录**：在当前项目的 `TROUBLESHOOTING.md` 中追加记录。
-- **如果是 DSH 基础环境问题**：更新 `references/env-pitfalls.md` 正文，并在本文件「避坑库（索引）」加一行指针。
+- **如果是 DSH 基础环境问题**：更新对应的 `references/pitfalls/<域>.md` 正文，并同步 `references/index.md` 的那一行（域列必须与实际落盘一致，否则读者被指错文件）。
 - **固化格式必须包含**：
   1. 问题现象（含报错原文）
   2. 触发条件
@@ -118,16 +118,32 @@ metadata:
 固化分两步，避免"每记一条就要一次沙箱批准"：
 
 1. **暂存（免批准）**：T2 条目先写**工作区内**的 `<workspace>/.dsh/pending-pitfalls.md`（`workspace-write` 下可直接写），格式与避坑库条目一致。
-2. **批量提升（1 次批准落 N 条）**：用户在场时**一次性**并入 `references/env-pitfalls.md`；已属某技能的只写**摘要 + 指针**，其未覆盖的独有点标 `⚠ 待并入 <技能>`。
+2. **批量提升（1 次批准落 N 条）**：用户在场时**一次性**并入对应的 `references/pitfalls/<域>.md` 并同步 `references/index.md`（`scripts/promote-pending.ps1` 已把这条流程做成命令）；已属某技能的只写**摘要 + 指针**，其未覆盖的独有点标 `⚠ 待并入 <技能>`。
 3. **记账**：提升后把条目移入暂存文件的「已提升」区并标日期，**不要删除**。
 
 > T1（项目特有）本就不必出工作区——写项目 `TROUBLESHOOTING.md`。
 
-## 避坑库（索引）
-**正文不在此处**：完整条目按需读取 `references/env-pitfalls.md`（28 条；平时不进入上下文，仅在查具体坑时打开）。
-已提升为独立技能的主题，**正文以该技能为准**，本索引与 references 只保留指针：
-**体检机制**：每 +10 条或环境变更后做一次——合并重复镜像、压缩超长条目、偿还条目里的 `⚠ 待并入 <技能>` 债务、复核 `最后验证`。
-**体检工具**：`scripts/kb-health.ps1` 出报告（目录税 / 复核状态与 90 天过期 / 条目体积 / 悬空指针 / ENV-005 不变式 / 债务）；`scripts/verify-kb.ps1` 跑 `references/verify-checks.json` 里的可执行判据，输出三态 OK / FAIL / MANUAL 并检查悬空检查项。
+## 避坑库（索引、正文与退役）
+**正文不在此处，也不在单个文件里**（B8 起按域拆分）：
+```text
+references/
+  index.md            ← 先读它（id | 标题 | 域文件，≤40 行），据此定位域
+  pitfalls/           ← 8 个域文件：powershell / sandbox / browser / plugin-install /
+                        credentials / config-files / msix / publishing
+  pitfalls/archive.md ← 退役区：退出常规阅读路径，**不删除**，仍可检索
+```
+- **查坑流程**：读 `index.md` → 只读**那一个**域文件。把 8 个域文件一起读进来，正是拆分要消灭的成本。
+- **域按症状分**（沙箱权限 / PS 语义与编码 / 浏览器 / 插件与包管理 / 凭据 / 配置读写 / MSIX / 技能目录与发布），不按条目编号。
+- **旧的单文件 `env-pitfalls.md` 已不存在**——留着它会变成双份真相（一处改了另一处没改，且先被读到的是旧的那份）。
+
+**体检机制**：每 +10 条或环境变更后做一次——合并重复镜像、压缩超长条目、偿还条目里的 `⚠ 待并入 <技能>` 债务、复核 `最后验证`、清退退役候选。
+**体检工具**：`scripts/kb-health.ps1` 出报告（目录税 / 复核状态与 90 天过期 / 条目体积 / 悬空指针 / **逐文件** ENV-005 不变式 / 债务 / **退役候选** / 索引一致性）；`scripts/verify-kb.ps1` 跑 `references/verify-checks.json` 里的可执行判据，输出三态 OK / FAIL / MANUAL，并检查悬空检查项与**未知占位符**。
+
+**退役（有生有死；B10 才补上）**：库只增不减 = 每个读者都要从头找到尾。判据必须**机械可判**，由 `kb-health.ps1` 报候选，不靠人回忆：
+- **K1 冗余**：「最后验证：见 `<技能>`」（正文以该技能为准）且本库正文只剩一行「症状 → 处置」摘要；
+- **K2 已自证**：`references/verify-checks.json` 中该条 kind 为 `pointer`，且目标技能真实存在。
+K1 ∧ K2 → 候选；正文移入 `pitfalls/archive.md`（保留可检索性），`index.md` 的域列改指 `pitfalls/archive.md`。
+两条硬约束：① **搬动必须与域合并同批执行**——纯指针条目整批搬走会留下空域文件（体检会直接报出哪几个会变空），所以工具**只报告、不自动搬移**；② **归档 ≠ 删除**，且**不允许因为「长期没复核」就归档**——那会按日期误杀重要条目，退役的唯一依据是「已被独立技能完全覆盖」。
 **脚本用法**（ENV-027）：本机 `CurrentUser = RemoteSigned`，未签名脚本须先 `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force`；所有 `.ps1` 带 BOM（ENV-003）；读写一律显式 UTF-8（ENV-005）。
 
 **已提升为独立技能的主题**（正文以该技能为准）：浏览器/无头渲染 → `edge-browser-testing`；插件安装与 profile → `dsh-plugin-install`；配置读写与编码 → `windows-config-safe-edit`；MSIX/WindowsApps → `windows-msix-app-repair`。其余条目（含 ENV-024 目录税、ENV-025 PS5.1 吞 stderr）正文在本库。
@@ -136,5 +152,5 @@ metadata:
 每次固化经验，必须产出以下之一：
 1. 一个全新的子 Skill 目录（包含 `SKILL.md` 和相关的工具脚本）。
 2. 一个更新后的 `TROUBLESHOOTING.md` 或 `EDGE-NOTES.md` 文件。
-3. `references/env-pitfalls.md` 的条目更新 + 本 `SKILL.md` 索引行的同步更新。
+3. `references/pitfalls/<域>.md` 的条目更新 + `references/index.md` 的同步更新（**两者必须同批改**，否则索引把读者指向不存在的文件）。
 

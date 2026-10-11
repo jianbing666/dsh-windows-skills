@@ -15,6 +15,10 @@
     2. 8 条条目已超出自己定的 ≤8 行上限，再逐条加字段会继续恶化；
     3. 整份清单作为一个文件可整体评审。
 
+  B8 起避坑库不再是单文件：references/index.md（索引）+ references/pitfalls/*.md（域文件）
+  + pitfalls/archive.md（退役区）。本脚本把索引与全部域文件**一起**当证据源，
+  因此条目落在哪个域都不影响悬空检查；占位符为 {SKILLS} / {KBREF} / {SCRIPTS}。
+
   三态输出
     OK     判据仍然成立
     FAIL   判据已失效（环境变了 → 该条需要复核/修订）
@@ -51,17 +55,23 @@ $ErrorActionPreference = 'Continue'
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 
 $skillDir = Join-Path $SkillsRoot 'experience-consolidation'
-$kbPath = Join-Path $skillDir 'references\env-pitfalls.md'
+$refDir = Join-Path $skillDir 'references'
+$pitDir = Join-Path $refDir 'pitfalls'
+$indexPath = Join-Path $refDir 'index.md'
 $scriptsDir = Join-Path $skillDir 'scripts'
-if (-not $ChecksPath) { $ChecksPath = Join-Path $skillDir 'references\verify-checks.json' }
+if (-not $ChecksPath) { $ChecksPath = Join-Path $refDir 'verify-checks.json' }
 
 if (-not (Test-Path -LiteralPath $ChecksPath)) { Write-Host ("找不到检查清单: {0}" -f $ChecksPath); exit 2 }
-if (-not (Test-Path -LiteralPath $kbPath)) { Write-Host ("找不到避坑库: {0}" -f $kbPath); exit 2 }
+if (-not (Test-Path -LiteralPath $indexPath)) { Write-Host ("找不到避坑库索引: {0}" -f $indexPath); exit 2 }
+$kbFiles = @(Get-ChildItem -LiteralPath $pitDir -Filter '*.md' -File -ErrorAction SilentlyContinue | Sort-Object Name)
+if ($kbFiles.Count -eq 0) { Write-Host ("找不到域文件: {0}\*.md" -f $pitDir); exit 2 }
 
 # ---------- 载入（显式 UTF-8，ENV-005）----------
 $raw = [System.IO.File]::ReadAllText($ChecksPath, [System.Text.Encoding]::UTF8)
 try { $spec = $raw | ConvertFrom-Json } catch { Write-Host ("检查清单 JSON 解析失败: {0}" -f $_.Exception.Message); exit 2 }
-$kbText = [System.IO.File]::ReadAllText($kbPath, [System.Text.Encoding]::UTF8)
+# 证据源 = index.md + 全部域文件（含 archive.md）：id 落在哪个域都不影响悬空检查
+$kbText = (@($indexPath) + @($kbFiles | ForEach-Object { $_.FullName }) |
+  ForEach-Object { [System.IO.File]::ReadAllText($_, [System.Text.Encoding]::UTF8) }) -join "`n"
 
 $kbIds = @{}
 foreach ($m in [regex]::Matches($kbText, '(?m)^\*\*\[(ENV-\d+)\]')) { $kbIds[$m.Groups[1].Value] = $true }
@@ -69,7 +79,8 @@ foreach ($m in [regex]::Matches($kbText, '(?m)^\*\*\[(ENV-\d+)\]')) { $kbIds[$m.
 function Expand-Placeholders {
   param([string]$Text)
   if ($null -eq $Text) { return $Text }
-  return $Text.Replace('{SKILLS}', $SkillsRoot).Replace('{KB}', $kbPath).Replace('{SCRIPTS}', $scriptsDir)
+  $out = $Text.Replace('{SKILLS}', $SkillsRoot).Replace('{KBREF}', $refDir).Replace('{SCRIPTS}', $scriptsDir)
+  return $out
 }
 
 function Invoke-CheckExpr {
@@ -94,11 +105,12 @@ function Invoke-CheckExpr {
 # ---------- 逐个执行 ----------
 Write-Host '================ 避坑库可执行复核 ================'
 Write-Host ("清单 : {0}" -f $ChecksPath)
-Write-Host ("避坑库: {0}" -f $kbPath)
+Write-Host ("避坑库: {0} + {1} 个域文件" -f $indexPath, $kbFiles.Count)
 Write-Host ''
 
 $results = @()
 $dangling = @()
+$unknownPh = @()
 foreach ($p in $spec.checks.PSObject.Properties) {
   $id = $p.Name
   $c = $p.Value
@@ -107,6 +119,14 @@ foreach ($p in $spec.checks.PSObject.Properties) {
   if ($c.PSObject.Properties['note']) { $note = [string]$c.note }
 
   if (-not $kbIds.ContainsKey($id)) { $dangling += $id }
+
+  # 占位符写错（如仍写 {KB}）会让命令带着字面量跑到 shell 里，报的错与真因无关 → 显式拦下
+  $raw = ''
+  if ($c.PSObject.Properties['expr']) { $raw += [string]$c.expr }
+  if ($c.PSObject.Properties['cmd']) { $raw += [string]$c.cmd }
+  foreach ($pm in [regex]::Matches($raw, '\{[A-Z_]+\}')) {
+    if (@('{SKILLS}', '{KBREF}', '{SCRIPTS}') -notcontains $pm.Value) { $unknownPh += ("{0}->{1}" -f $id, $pm.Value) }
+  }
 
   $state = 'MANUAL'
   $detail = ''
@@ -166,6 +186,9 @@ if ($dangling.Count -gt 0) {
 } else {
   Write-Host '悬空检查项: 无（每个检查 id 都能在避坑库里找到对应条目）'
 }
+if ($unknownPh.Count -gt 0) {
+  Write-Host ("未知占位符 {0} 处（占位符写错会带着字面量跑到 shell，报错与真因无关）：{1}" -f $unknownPh.Count, ($unknownPh -join ', '))
+}
 if ($nFail -gt 0) {
   Write-Host ''
   Write-Host 'FAIL 明细（这些条目的判据已不成立 → 环境变了，需要复核或修订条目）：'
@@ -173,8 +196,8 @@ if ($nFail -gt 0) {
 }
 
 Write-Host ''
-if ($Strict -and ($nFail -gt 0 -or $dangling.Count -gt 0)) {
-  Write-Host 'STRICT: 存在 FAIL 或悬空检查项 —— 闸门不通过。'
+if ($Strict -and ($nFail -gt 0 -or $dangling.Count -gt 0 -or $unknownPh.Count -gt 0)) {
+  Write-Host 'STRICT: 存在 FAIL / 悬空检查项 / 未知占位符 —— 闸门不通过。'
   exit 1
 }
 Write-Host '复核完成。'

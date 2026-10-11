@@ -11,8 +11,9 @@ looked fine".
 ## The five skills
 
 They are a **suite** and are meant to be installed together: `experience-consolidation` is the
-index of 25 environment pitfalls, and about 11 of those entries only point at one of the four
-satellites for their full text.
+index of environment pitfalls, split into one routing index plus eight per-domain files that are read
+strictly on demand — and 10 of those entries deliberately only point at one of the four satellites
+for their full text.
 
 | Skill | Role | When it triggers |
 | --- | --- | --- |
@@ -108,8 +109,10 @@ These are **on-demand resources** — they cost **zero** catalog tokens (only `n
 | --- | --- |
 | `safe-edit.ps1` | The five-step safe edit: backup → **assert before writing** → explicit UTF-8 write → strict validation → restore-on-failure. Each failure class has its own exit code. |
 | `scan-secrets.ps1` | Four-path × context-anchored secret scan (HEAD / every revision / untracked files on disk / commit identities). `-SelfTest` proves true positives **and** true negatives. |
-| `kb-health.ps1` | One-command health report: catalog tax, verification status + 90-day staleness, oversized entries, dangling pointers, the ENV-005 invariant, and outstanding debt. |
-| `verify-kb.ps1` | Runs the executable checks in `references/verify-checks.json`, reporting OK / FAIL / MANUAL plus dangling check ids. |
+| `kb-health.ps1` | One-command health report: catalog tax, verification status + 90-day staleness, oversized entries, dangling pointers, the **per-file** ENV-005 invariant, outstanding debt, **retirement candidates**, and index consistency. |
+| `verify-kb.ps1` | Runs the executable checks in `references/verify-checks.json`, reporting OK / FAIL / MANUAL, dangling check ids, and unknown placeholders. |
+| `dedup-scan.ps1` | Scores a candidate pitfall against every skill's `(name, description, whenToUse)`, so "which skill owns this?" is computed rather than eyeballed. |
+| `promote-pending.ps1` | Closes the staging loop: promote entries from `.dsh/pending-pitfalls.md` into the right domain file, update the ledger, then run the validators. |
 | `peb-env-*.ps1` | Read a running process's real environment block (see ENV-017). |
 
 > **Execution policy.** On Windows, unsigned scripts are blocked when `CurrentUser = RemoteSigned`. Run
@@ -134,7 +137,8 @@ fact.
 
 ## Contributing
 
-Add entries in the format of `experience-consolidation/references/env-pitfalls.md`:
+Add entries in the format of the domain files under `experience-consolidation/references/pitfalls/`
+(the routing table is `experience-consolidation/references/index.md`):
 
 1. **Symptom** — the error text, verbatim
 2. **Trigger** — when it happens
@@ -230,8 +234,10 @@ MIT — see [LICENSE](./LICENSE).
 | --- | --- |
 | `safe-edit.ps1` | 五步安全编辑：备份 → **写盘前先断言** → 显式 UTF-8 写盘 → 严格校验 → 失败整体还原。每种失败一个独立退出码。 |
 | `scan-secrets.ps1` | 四路 × 上下文锚定的敏感串扫描（HEAD / 全历史 / 磁盘未跟踪文件 / 提交身份）。`-SelfTest` 真阳性与真阴性双向验证。 |
-| `kb-health.ps1` | 一条命令出体检报告：目录税、复核状态与 90 天过期、条目体积、悬空指针、ENV-005 不变式、债务。 |
-| `verify-kb.ps1` | 执行 `references/verify-checks.json` 里的可执行判据，输出 OK / FAIL / MANUAL，并检查悬空检查项。 |
+| `kb-health.ps1` | 一条命令出体检报告：目录税、复核状态与 90 天过期、条目体积、悬空指针、**逐文件** ENV-005 不变式、债务、**退役候选**、索引一致性。 |
+| `verify-kb.ps1` | 执行 `references/verify-checks.json` 里的可执行判据，输出 OK / FAIL / MANUAL，并检查悬空检查项与未知占位符。 |
+| `dedup-scan.ps1` | 把候选条目与全部技能的 `(name, description, whenToUse)` 打分，让「该并入谁」由计算得出而不是肉眼看。 |
+| `promote-pending.ps1` | 闭合暂存回路：把 `.dsh/pending-pitfalls.md` 里的条目并入正确的域文件 → 更新记账 → 跑校验。 |
 | `peb-env-*.ps1` | 读运行中进程的真实环境块（见 ENV-017）。 |
 
 > **执行策略**：Windows 上 `CurrentUser = RemoteSigned` 时未签名脚本会被拦截。先跑
@@ -248,7 +254,8 @@ Windows 11 · Windows PowerShell **5.1**（`PSEdition=Desktop`；本机 `pwsh` �
 
 ## 贡献新条目
 
-对齐 `experience-consolidation/references/env-pitfalls.md` 的六字段：现象（报错原文）/
+对齐 `experience-consolidation/references/pitfalls/*.md` 的六字段（路由表见
+`experience-consolidation/references/index.md`）：现象（报错原文）/
 触发条件/根因/方案（含命令）/验证信号（唯一可靠信号）/适用环境 + 最后验证日期。
 
 新增技能有固定成本：每个技能的 `name`+`description` 会注入**每一轮**的目录，与本轮是否用到

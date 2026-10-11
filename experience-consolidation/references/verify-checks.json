@@ -1,10 +1,10 @@
 {
   "meta": {
-    "purpose": "按 ENV id 键入的可执行复核清单，由 scripts/verify-kb.ps1 批量执行。",
+    "purpose": "按 ENV id 键入的可执行复核清单，由 scripts/verify-kb.ps1 批量执行（B8 起避坑库为 references/index.md + references/pitfalls/*.md）。",
     "updated": "2026-10-11",
     "placeholders": {
       "{SKILLS}": "技能根目录（默认 %USERPROFILE%\\.dsh\\skills）",
-      "{KB}": "避坑库正文件 references/env-pitfalls.md 的绝对路径",
+      "{KBREF}": "避坑库 references/ 目录（index.md + pitfalls/*.md）的绝对路径",
       "{SCRIPTS}": "本技能 scripts/ 目录的绝对路径"
     },
     "kinds": {
@@ -35,10 +35,10 @@
     },
     "ENV-005": {
       "kind": "expr",
-      "expr": "((Get-Content -LiteralPath '{KB}' -Encoding utf8).Count) -eq ((([IO.File]::ReadAllBytes('{KB}')) | Where-Object { $_ -eq 0x0A }).Count)",
+      "expr": "& { $bad = 0; foreach ($f in (Get-ChildItem -LiteralPath '{KBREF}' -Recurse -File -Filter *.md)) { $p = $f.FullName; $n1 = @(Get-Content -LiteralPath $p -Encoding utf8).Count; $n2 = 0; foreach ($b in [IO.File]::ReadAllBytes($p)) { if ($b -eq 0x0A) { $n2++ } }; if ($n1 -ne $n2) { $bad++ } }; $bad }",
       "op": "eq",
-      "value": true,
-      "note": "定义必须是 Get-Content 语义（行数 == 0x0A 数）；-split 语义下是 元素数 == 0x0A 数 + 1。两者不可混用"
+      "value": 0,
+      "note": "定义必须是 Get-Content 语义（行数 == 0x0A 数）；-split 语义下是 元素数 == 0x0A 数 + 1。两者不可混用。B8 起逐文件判定（index.md + pitfalls/*.md），返回值 = 违反不变式的文件数"
     },
     "ENV-006": { "kind": "pointer", "target": "edge-browser-testing", "note": "正文以该技能为准" },
     "ENV-007": { "kind": "pointer", "target": "edge-browser-testing", "note": "正文以该技能为准" },
