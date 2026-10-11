@@ -100,6 +100,23 @@ node -e "const y=require('js-yaml'),f=require('fs');const t=f.readFileSync(proce
 
 Requirements: no BOM, `name` in kebab-case matching its directory, and `description` present.
 
+## Scripts (`experience-consolidation/scripts/`)
+
+These are **on-demand resources** — they cost **zero** catalog tokens (only `name` + `description` are injected every turn).
+
+| Script | What it does |
+| --- | --- |
+| `safe-edit.ps1` | The five-step safe edit: backup → **assert before writing** → explicit UTF-8 write → strict validation → restore-on-failure. Each failure class has its own exit code. |
+| `scan-secrets.ps1` | Four-path × context-anchored secret scan (HEAD / every revision / untracked files on disk / commit identities). `-SelfTest` proves true positives **and** true negatives. |
+| `kb-health.ps1` | One-command health report: catalog tax, verification status + 90-day staleness, oversized entries, dangling pointers, the ENV-005 invariant, and outstanding debt. |
+| `verify-kb.ps1` | Runs the executable checks in `references/verify-checks.json`, reporting OK / FAIL / MANUAL plus dangling check ids. |
+| `peb-env-*.ps1` | Read a running process's real environment block (see ENV-017). |
+
+> **Execution policy.** On Windows, unsigned scripts are blocked when `CurrentUser = RemoteSigned`. Run
+> `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force` first, or invoke with
+> `powershell -ExecutionPolicy Bypass -File <script>`. The change is process-scoped: no admin rights, not persisted.
+>
+> Every `.ps1` here is UTF-8 **with BOM** (ENV-003). Pure-ASCII files are deliberately left without one (harmless).
 ## Environment baseline
 
 Everything here was reproduced on:
@@ -205,6 +222,23 @@ MIT — see [LICENSE](./LICENSE).
 **开新会话**，确认技能目录里**列得出 5 个名字**。❌ 不算成功：「没有报错」「文件已存在」
 「git 推送成功」。frontmatter 一坏技能会**静默消失**，且目录不提供逐条诊断。
 
+## 脚本（`experience-consolidation/scripts/`）
+
+这些是**按需资源**——目录税为 **0**（每轮只注入 `name` + `description`）。
+
+| 脚本 | 作用 |
+| --- | --- |
+| `safe-edit.ps1` | 五步安全编辑：备份 → **写盘前先断言** → 显式 UTF-8 写盘 → 严格校验 → 失败整体还原。每种失败一个独立退出码。 |
+| `scan-secrets.ps1` | 四路 × 上下文锚定的敏感串扫描（HEAD / 全历史 / 磁盘未跟踪文件 / 提交身份）。`-SelfTest` 真阳性与真阴性双向验证。 |
+| `kb-health.ps1` | 一条命令出体检报告：目录税、复核状态与 90 天过期、条目体积、悬空指针、ENV-005 不变式、债务。 |
+| `verify-kb.ps1` | 执行 `references/verify-checks.json` 里的可执行判据，输出 OK / FAIL / MANUAL，并检查悬空检查项。 |
+| `peb-env-*.ps1` | 读运行中进程的真实环境块（见 ENV-017）。 |
+
+> **执行策略**：Windows 上 `CurrentUser = RemoteSigned` 时未签名脚本会被拦截。先跑
+> `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force`，或用
+> `powershell -ExecutionPolicy Bypass -File <脚本>`。该设置只作用于当前进程：不需管理员、不持久化。
+>
+> 本目录的 `.ps1` 一律是**带 BOM 的 UTF-8**（ENV-003）；纯 ASCII 的文件刻意不加 BOM（无害）。
 ## 环境基线
 
 Windows 11 · Windows PowerShell **5.1**（`PSEdition=Desktop`；本机 `pwsh` 工具实际跑的是

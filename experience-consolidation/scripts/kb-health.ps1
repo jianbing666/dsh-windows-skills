@@ -10,14 +10,29 @@
 
   本脚本把体检变成一条命令，产出六段：
     1. 目录税（ENV-024）：技能条目数 + 各技能 name/description 字符数
-    2. 避坑条目：总数 + 按「最后验证」分类（带日期 / 未复核 / 委托给其他技能）
+    2. 避坑条目：总数 + 可机读的复核状态 + **90 天过期清单**（B5 结构化后才真正可算）
     3. 条目体积：超过 ≤8 行上限的条目
     4. 悬空指针：「相关技能：X」/「正文以 X 为准」里的 X 技能是否真实存在
-    5. ENV-005 动态不变式：严格 UTF-8 解码 && 实际行数 == 文件内 0x0A 字节数
+    5. ENV-005 动态不变式：严格 UTF-8 解码 && 行结构未被吞掉
     6. 债务：标了「⚠ 待并入 <技能>」的条目数
+
+  「最后验证」的词汇（B5 起为可机读形式）
+    最后验证：2026-09-19（…）   → 有真实复核日期，可算 90 天过期
+    最后验证：无（初次记录 …）   → 从未独立复核
+    最后验证：见 `技能名`（…）   → 委托给其他技能，正文以该技能为准
+    其他                        → 无法解析（应修）
+
+  ⚠️ 计数定义必须与被测条目一致
+    ENV-005 说「行数与文件内 0x0A 字节数相等」——那是 **Get-Content 语义**。
+    同一文件用 `-split "\n"` 会得到「0x0A 数 + 1」个元素（多一个结尾空串）。
+    2026-10-11 实测：同一文件 Get-Content = 166、-split = 167、0x0A = 166。
+    本脚本按 Get-Content 语义判定，**不得为迁就自己选错的测法去改判据**。
 
 .PARAMETER SkillsRoot
   技能根目录，默认 %USERPROFILE%\.dsh\skills
+
+.PARAMETER StaleDays
+  复核过期阈值（天），默认 90。
 
 .PARAMETER Json
   以 JSON 输出。
@@ -30,6 +45,7 @@
 [CmdletBinding()]
 param(
   [string]$SkillsRoot = (Join-Path $env:USERPROFILE '.dsh\skills'),
+  [int]$StaleDays = 90,
   [switch]$Json
 )
 
@@ -83,10 +99,28 @@ for ($i = 0; $i -lt $marks.Count; $i++) {
   }
 }
 
-$withDate = @($entries | Where-Object { $_.Verify -match '\d{4}-\d{2}-\d{2}' -and $_.Verify -notmatch '^见 ' })
-$unverified = @($entries | Where-Object { $_.Verify -match '^未复核' })
-$delegated = @($entries | Where-Object { $_.Verify -match '^见 ' })
+# 按 B5 的可机读词汇分类
+$dated = @($entries | Where-Object { $_.Verify -match '^\d{4}-\d{2}-\d{2}' })
+$never = @($entries | Where-Object { $_.Verify -match '^无' })
+$delegated = @($entries | Where-Object { $_.Verify -match '^见 `[a-z0-9-]+`' })
+$unparsed = @($entries | Where-Object {
+  $_.Verify -notmatch '^\d{4}-\d{2}-\d{2}' -and $_.Verify -notmatch '^无' -and $_.Verify -notmatch '^见 `[a-z0-9-]+`'
+})
 $oversized = @($entries | Where-Object { $_.Lines -gt 8 })
+
+# 90 天过期计算（只有「带日期」的条目参与）
+$today = Get-Date
+$aged = @()
+foreach ($e in $dated) {
+  $m = [regex]::Match($e.Verify, '^(\d{4}-\d{2}-\d{2})')
+  $d = $null
+  try { $d = [datetime]::ParseExact($m.Groups[1].Value, 'yyyy-MM-dd', $null) } catch { }
+  $age = $null
+  if ($d) { $age = [int]($today - $d).TotalDays }
+  $aged += [pscustomobject]@{ Id = $e.Id; Date = $m.Groups[1].Value; AgeDays = $age }
+}
+$stale = @($aged | Where-Object { $null -ne $_.AgeDays -and $_.AgeDays -gt $StaleDays })
+$newest = $aged | Sort-Object AgeDays | Select-Object -First 1
 
 # 悬空指针
 $refRe = [regex]'(?:相关技能|正文以)\s*[:：]?\s*`([a-z0-9][a-z0-9-]+)`'
@@ -99,10 +133,7 @@ foreach ($r in $refs.Keys) {
 
 $debt = ([regex]::Matches($kbText, '⚠\s*待并入')).Count
 
-# ---------- 5. ENV-005 动态不变式 ----------
-# 判据必须「实际去数」。早先版本写的是 `$kbLines -eq $kbLf` —— 而 `-split "`n"` 在文件以换行
-# 结尾时会产生（0x0A 数 + 1）个元素，于是该不变式**永远不成立**，把一个正常文件误报成损坏。
-# 正确形式见下；另附 cp936 对照读取，用来展示 ENV-005 的实际症状（错误的读取方会少算行）。
+# ---------- 5. ENV-005 动态不变式（Get-Content 语义！）----------
 $kbBytes = [System.IO.File]::ReadAllBytes($kbPath)
 $kbLf = 0
 foreach ($b in $kbBytes) { if ($b -eq 0x0A) { $kbLf++ } }
@@ -112,22 +143,35 @@ $decodeOk = $true
 $utf8Text = $null
 try { $utf8Text = $strict.GetString($kbBytes) } catch { $decodeOk = $false }
 
-$linesUtf8 = -1
-if ($decodeOk) { $linesUtf8 = ($utf8Text -split "`n").Count }
+# Get-Content 语义：行数（不含结尾空行）
+$linesGetContent = -1
+if ($decodeOk) { $linesGetContent = @(Get-Content -LiteralPath $kbPath -Encoding utf8).Count }
+# 对照：-split 语义会多出 1 个结尾空元素
+$linesSplit = -1
+if ($decodeOk) { $linesSplit = ($utf8Text -split "`n").Count }
+# cp936 对照读取：展示 ENV-005 的实际症状（错误读取方会吞掉 0x0A 而少算行）
 $linesGbk = -1
-try { $linesGbk = ([System.Text.Encoding]::GetEncoding(936).GetString($kbBytes) -split "`n").Count } catch { }
+try { $linesGbk = (@([System.Text.Encoding]::GetEncoding(936).GetString($kbBytes) -split "`n")).Count } catch { }
 
-# 正确解码后元素数 == 0x0A 数 + 1（即行结构没有被吞掉）
-$invariantOk = ($decodeOk -and ($linesUtf8 -eq ($kbLf + 1)))
+# 判据 = ENV-005 原文的定义：行数（Get-Content）== 0x0A 字节数
+$invariantOk = ($decodeOk -and ($linesGetContent -eq $kbLf))
 
 # ---------- 报告 ----------
 if ($Json) {
   [pscustomobject]@{
     SkillsRoot = $SkillsRoot
     Catalog = [pscustomobject]@{ SkillCount = $skills.Count; TotalChars = $catalog; Baseline = '2026-09-19: 7 / 1540'; PerSkill = $skills }
-    Entries = [pscustomobject]@{ Total = $entries.Count; WithDate = $withDate.Count; Unverified = $unverified.Count; Delegated = $delegated.Count; Oversized = ($oversized | ForEach-Object { $_.Id }) }
+    Entries = [pscustomobject]@{
+      Total = $entries.Count; Dated = $dated.Count; NeverVerified = $never.Count
+      Delegated = $delegated.Count; Unparsed = $unparsed.Count
+      StaleOverDays = $stale.Count; StaleDays = $StaleDays
+      Oversized = ($oversized | ForEach-Object { $_.Id })
+    }
     Dangling = $dangling
-    Env005 = [pscustomobject]@{ DecodeOk = $decodeOk; LinesUtf8 = $linesUtf8; LinesGbk = $linesGbk; LfBytes = $kbLf; InvariantOk = $invariantOk; File = $kbPath }
+    Env005 = [pscustomobject]@{
+      DecodeOk = $decodeOk; LinesGetContent = $linesGetContent; LinesSplit = $linesSplit
+      LinesCp936 = $linesGbk; LfBytes = $kbLf; InvariantOk = $invariantOk; File = $kbPath
+    }
     Debt = $debt
   } | ConvertTo-Json -Depth 6
   exit 0
@@ -143,16 +187,19 @@ foreach ($s in ($skills | Sort-Object Cost -Descending)) {
 }
 
 Write-Host ''
-Write-Host '[2] 避坑条目与「最后验证」（90 天体检机制的输入）'
+Write-Host '[2] 避坑条目与复核状态（90 天体检的输入）'
 Write-Host ("    条目总数 {0}" -f $entries.Count)
-Write-Host ("      带真实复核日期 {0}" -f $withDate.Count)
-Write-Host ("      未复核           {0}" -f $unverified.Count)
+Write-Host ("      带真实复核日期 {0}   其中过期 >{1} 天：{2}" -f $dated.Count, $StaleDays, $stale.Count)
+Write-Host ("      从未独立复核     {0}" -f $never.Count)
 Write-Host ("      委托给其他技能   {0}" -f $delegated.Count)
-if (@($entries | Where-Object { $_.HasStructured }).Count -eq 0) {
-  Write-Host '      ⚠ 尚无结构化 lastVerified 字段 → 无法自动计算 90 天过期（B5 待做）'
+if ($unparsed.Count -gt 0) {
+  Write-Host ("      ⚠ 无法解析       {0}：{1}" -f $unparsed.Count, (($unparsed | ForEach-Object { $_.Id }) -join ', '))
+} else {
+  Write-Host '      无法解析         0（全部为可机读形式）'
 }
-$noDay = @($entries | Where-Object { $_.Verify -match '\d{4}-\d{2}(?!-\d{2})' })
-if ($noDay.Count -gt 0) { Write-Host ("      ⚠ {0} 条的日期只有年月、没有日，算不出 90 天：{1}" -f $noDay.Count, (($noDay | ForEach-Object { $_.Id }) -join ', ')) }
+if ($newest) { Write-Host ("      最近一次复核：{0}（{1}）（距今 {2} 天）" -f $newest.Id, $newest.Date, $newest.AgeDays) }
+if ($stale.Count -gt 0) { Write-Host ("      ⚠ 过期条目：{0}" -f (($stale | ForEach-Object { $_.Id }) -join ', ')) }
+else { Write-Host ("      过期条目：0（阈值 {0} 天）" -f $StaleDays) }
 
 Write-Host ''
 Write-Host '[3] 条目体积（上限 <= 8 行）'
@@ -165,12 +212,13 @@ if ($dangling.Count -eq 0) { Write-Host ("    全部可解析（引用了 {0} �
 else { foreach ($d in $dangling) { Write-Host ("      ❌ 找不到技能: {0}" -f $d) } }
 
 Write-Host ''
-Write-Host '[5] ENV-005 动态不变式（严格解码 && 行结构未被吞掉）'
+Write-Host '[5] ENV-005 动态不变式（严格解码 && 行数 == 0x0A 数）'
 Write-Host ("    文件 {0}" -f $kbPath)
-Write-Host ("    严格 UTF-8 解码 {0}   UTF-8 行数 {1}   cp936 行数 {2}   0x0A 字节 {3}   => {4}" -f $decodeOk, $linesUtf8, $linesGbk, $kbLf, $(if ($invariantOk) { 'OK' } else { '不成立' }))
-Write-Host '    判据：UTF-8 行数 == 0x0A 数 + 1（实际去数，不得与写死常量比较——本条曾因写死 151 而自身失效）。'
-if ($linesGbk -ge 0 -and $linesGbk -ne $linesUtf8) {
-  Write-Host ("    ⚠ cp936 读取少算了 {0} 行 —— 这正是 ENV-005 的症状" -f ($linesUtf8 - $linesGbk))
+Write-Host ("    严格 UTF-8 解码 {0}   Get-Content 行数 {1}   -split 元素数 {2}   cp936 行数 {3}   0x0A 字节 {4}   => {5}" -f $decodeOk, $linesGetContent, $linesSplit, $linesGbk, $kbLf, $(if ($invariantOk) { 'OK' } else { '不成立' }))
+Write-Host '    判据按 ENV-005 原文定义（Get-Content 语义：行数 == 0x0A 数）。-split 语义是「元素数 == 0x0A 数 + 1」，两者不可混用。'
+Write-Host '    不得与写死的常量比较——本条曾因写死 151 而自身失效。'
+if ($linesGbk -ge 0 -and $linesGbk -ne $linesGetContent) {
+  Write-Host ("    ⚠ cp936 读取把 {0} 行读成 {1} 行（少算 {2}）——这正是 ENV-005 的症状" -f $linesGetContent, $linesGbk, ($linesGetContent - $linesGbk))
 } else {
   Write-Host '    本文件下 cp936 未丢行（症状不显现 != 风险不存在）。'
 }

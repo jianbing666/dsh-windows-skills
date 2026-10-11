@@ -1,0 +1,90 @@
+{
+  "meta": {
+    "purpose": "按 ENV id 键入的可执行复核清单，由 scripts/verify-kb.ps1 批量执行。",
+    "updated": "2026-10-11",
+    "placeholders": {
+      "{SKILLS}": "技能根目录（默认 %USERPROFILE%\\.dsh\\skills）",
+      "{KB}": "避坑库正文件 references/env-pitfalls.md 的绝对路径",
+      "{SCRIPTS}": "本技能 scripts/ 目录的绝对路径"
+    },
+    "kinds": {
+      "expr": "求值 expr，与 value 按 op 比较（op: eq/ne/gt/ge/lt/le/match/notmatch/contains）",
+      "cmd": "执行 cmd，比对 $LASTEXITCODE 与 expectExit",
+      "report": "执行 cmd 并打印结果，不做断言（该值本身会随时间变化）",
+      "pointer": "断言被委托的技能文件真实存在（悬空指针检查）",
+      "manual": "无法自动判定，保留人工复核"
+    },
+    "rule": "每个 id 必须能在 evidence 文件里找到同名条目，否则视为悬空检查项并报错。"
+  },
+  "checks": {
+    "ENV-001": { "kind": "manual", "note": "GUI 程序不等候属交互式行为，需真实启动 GUI 复现" },
+    "ENV-002": { "kind": "manual", "note": "沙箱命名管道禁令需在受限会话下实测 spawn" },
+    "ENV-003": {
+      "kind": "expr",
+      "expr": "((Get-ChildItem -LiteralPath '{SCRIPTS}' -Filter *.ps1 -ErrorAction SilentlyContinue) | Where-Object { $b=[IO.File]::ReadAllBytes($_.FullName); ((($b | Where-Object { $_ -gt 0x7F }).Count) -gt 0) -and -not ($b.Length -ge 3 -and $b[0] -eq 0xEF -and $b[1] -eq 0xBB) } | Measure-Object).Count",
+      "op": "eq",
+      "value": 0,
+      "note": "含非 ASCII 的 .ps1 必须带 BOM；纯 ASCII 脚本无 BOM 无害（ENV-017 本就允许纯 ASCII）"
+    },
+    "ENV-004": {
+      "kind": "expr",
+      "expr": "$PSVersionTable.PSEdition",
+      "op": "eq",
+      "value": "Desktop",
+      "note": "装了 PowerShell 7 并让 pwsh 工具走 PS7 后，本条基线即失效，须重判"
+    },
+    "ENV-005": {
+      "kind": "expr",
+      "expr": "((Get-Content -LiteralPath '{KB}' -Encoding utf8).Count) -eq ((([IO.File]::ReadAllBytes('{KB}')) | Where-Object { $_ -eq 0x0A }).Count)",
+      "op": "eq",
+      "value": true,
+      "note": "定义必须是 Get-Content 语义（行数 == 0x0A 数）；-split 语义下是 元素数 == 0x0A 数 + 1。两者不可混用"
+    },
+    "ENV-006": { "kind": "pointer", "target": "edge-browser-testing", "note": "正文以该技能为准" },
+    "ENV-007": { "kind": "pointer", "target": "edge-browser-testing", "note": "正文以该技能为准" },
+    "ENV-008": { "kind": "pointer", "target": "dsh-plugin-install", "note": "正文以该技能为准" },
+    "ENV-009": { "kind": "manual", "note": "renderer token 闸门需在桌面端外实测 /api/desktop/* 返回 403" },
+    "ENV-010": { "kind": "pointer", "target": "dsh-plugin-install", "note": "正文以该技能为准" },
+    "ENV-011": { "kind": "pointer", "target": "dsh-plugin-install", "note": "正文以该技能为准" },
+    "ENV-012": { "kind": "pointer", "target": "dsh-plugin-install", "note": "正文以该技能为准" },
+    "ENV-013": { "kind": "pointer", "target": "windows-config-safe-edit", "note": "相关技能" },
+    "ENV-014": { "kind": "manual", "note": "服务端间歇性 401 无法在本地稳定断言，只能多轮复测" },
+    "ENV-015": { "kind": "pointer", "target": "windows-msix-app-repair", "note": "正文以该技能为准" },
+    "ENV-016": { "kind": "pointer", "target": "windows-config-safe-edit", "note": "相关技能" },
+    "ENV-017": {
+      "kind": "report",
+      "cmd": "$r = @(); $r += ('PEB 读取脚本: ' + $(if (Test-Path -LiteralPath '{SCRIPTS}\\peb-env-dump.ps1') { '存在' } else { '缺失' })); $r += ('进程 PSEdition: ' + $PSVersionTable.PSEdition); $r -join ' | '",
+      "note": "本条的核心是「读进程真实环境」这一手段，脚本存在性可自动核对，读数需人工"
+    },
+    "ENV-018": { "kind": "manual", "note": "按 key 分账需在 DeepSeek 控制台目视按-key 用量图" },
+    "ENV-019": { "kind": "pointer", "target": "windows-msix-app-repair", "note": "正文以该技能为准" },
+    "ENV-020": { "kind": "pointer", "target": "windows-msix-app-repair", "note": "正文以该技能为准" },
+    "ENV-021": { "kind": "pointer", "target": "windows-msix-app-repair", "note": "正文以该技能为准" },
+    "ENV-022": { "kind": "manual", "note": "UAC 提权输出落盘需交互式点击 UAC 才能复现" },
+    "ENV-023": { "kind": "pointer", "target": "windows-config-safe-edit", "note": "相关技能" },
+    "ENV-024": {
+      "kind": "report",
+      "cmd": "$n = 0; $c = 0; Get-ChildItem -LiteralPath '{SKILLS}' -Directory -Force | Where-Object { $_.Name -notmatch '^\\.' } | ForEach-Object { $f = Join-Path $_.FullName 'SKILL.md'; if (Test-Path -LiteralPath $f) { $t = [IO.File]::ReadAllText($f, [Text.Encoding]::UTF8); $m = [regex]::Match($t, '(?s)^---\\r?\\n(.*?)\\r?\\n---'); if ($m.Success) { $nm = [regex]::Match($m.Groups[1].Value, '(?m)^name:\\s*(.+)$').Groups[1].Value.Trim(); $ds = [regex]::Match($m.Groups[1].Value, '(?m)^description:\\s*(.+)$').Groups[1].Value.Trim(); $c += $nm.Length + $ds.Length; $n++ } } }; ('技能数 ' + $n + ' / 目录税 ' + $c + ' 字符（基线 2026-09-19：7 / 1540）')",
+      "note": "数值随技能增减而变，只报告不断言；判据永远是「条目数 + name/description 字符数」这两个数，不看正文体积"
+    },
+    "ENV-025": {
+      "kind": "expr",
+      "expr": "& { $e=$ErrorActionPreference; $ErrorActionPreference='Stop'; try { cmd.exe /c 'echo probe 1>&2' 2>&1 | Out-Null; 'no-abort' } catch { 'abort' } finally { $ErrorActionPreference=$e } }",
+      "op": "eq",
+      "value": "abort",
+      "note": "触发条件必须含**stderr 被重定向/捕获**（2>&1）：只写 stderr 而无重定向则不会升级为终止错误"
+    },
+    "ENV-026": { "kind": "manual", "note": "三处静默退化属语言行为，无法用单一断言覆盖；反例见条目正文" },
+    "ENV-027": {
+      "kind": "report",
+      "cmd": "'CurrentUser=' + (Get-ExecutionPolicy -Scope CurrentUser) + ' | Process=' + (Get-ExecutionPolicy -Scope Process) + ' | 生效=' + (Get-ExecutionPolicy)",
+      "note": "策略值本身会变，只报告；调用脚本前须 Set-ExecutionPolicy -Scope Process Bypass"
+    },
+    "ENV-028": {
+      "kind": "cmd",
+      "cmd": "& '{SCRIPTS}\\scan-secrets.ps1' -SelfTest *> $null",
+      "expectExit": 0,
+      "note": "自检必须真阳性 + 真阴性双向通过，否则闸门形同虚设"
+    }
+  }
+}

@@ -2,6 +2,13 @@
 name: experience-consolidation
 description: 当遇到环境报错、依赖冲突、组件不兼容、启动失败、配置异常等非预期问题时触发。用于现场记录、根因分析、方案验证，并将解决过程固化为可复用的技能或文档。
 whenToUse: 同一问题重复出现、阻塞主流程超过 10 分钟、或「修复 A 引发 B」时使用；笔误、拼写一类一次即可修正的琐碎错误不要用本技能。
+metadata:
+  baseline: "Windows 11 + Windows PowerShell 5.1 + ACP936 + DSH Desktop 2.0.x"
+  lastAudit: 2026-10-11
+  nextAudit: 2027-01-09
+  executableChecks: references/verify-checks.json
+  healthTool: scripts/kb-health.ps1
+  note: "条目数与目录税刻意不写在这里——它们可由 kb-health.ps1 算出，写死必腐烂（见 ENV-005 的 151）"
 ---
 
 # 经验固化（Experience Consolidation）
@@ -41,6 +48,9 @@ whenToUse: 同一问题重复出现、阻塞主流程超过 10 分钟、或「�
 - 提出至少一个**临时绕过方案**和一个**长期修复方案**。
 - 必须设立**唯一可靠的成功信号**：不要用“进程存在”，而要用“取到预期的 title / 返回体”。
 - 彻底验证后，才能宣告问题解决。
+- **不采信动作的自述，要回读状态**：命令「没报错」不等于动作成功。每个写操作之后**重新读回目标状态来判定**（哈希 / 内容 / 计数），而不是相信循环里那行「已…」日志。反例：2026-10-11 一次批量隔离里 17 个文件一个都没移动，脚本却报告全部成功（详见 ENV-026）。
+- **彩排法**：改动**工作区之外**的真实目标前，先在**假环境**里把整条流程完整排练一遍，再申请那一次授权。做法：让 `$env:USERPROFILE` 指向一个假目录、把真实目标复制进去，跑完后对结果做**不采信脚本自述**的独立复核。本轮两次彩排各抓到一个真实 bug（`@()` 只包住管道首段导致单元素退化为字符串）。
+- **判据必须与被测条目用同一个定义**：2026-10-11 实测同一文件 `Get-Content` 得 166 行、`-split "\n"` 得 167 个元素。用错定义会让判据「永远不成立」，或为迁就自己选错的测法去改判据——两者都是 ENV-026 ④ 的形态。
 
 ### 阶段三.五：技能查重（Dedup，固化前必做）
 **目的**：先判「该并入谁」，再决定「怎么落盘」——同一事实只允许长在一处。**扫描范围 = `~/.dsh/skills` 下全部目录，含第三方 bundle**（它们同样占目录税、同样会撞题）。
@@ -114,9 +124,11 @@ whenToUse: 同一问题重复出现、阻塞主流程超过 10 分钟、或「�
 > T1（项目特有）本就不必出工作区——写项目 `TROUBLESHOOTING.md`。
 
 ## 避坑库（索引）
-**正文不在此处**：完整条目按需读取 `references/env-pitfalls.md`（25 条；平时不进入上下文，仅在查具体坑时打开）。
+**正文不在此处**：完整条目按需读取 `references/env-pitfalls.md`（28 条；平时不进入上下文，仅在查具体坑时打开）。
 已提升为独立技能的主题，**正文以该技能为准**，本索引与 references 只保留指针：
 **体检机制**：每 +10 条或环境变更后做一次——合并重复镜像、压缩超长条目、偿还条目里的 `⚠ 待并入 <技能>` 债务、复核 `最后验证`。
+**体检工具**：`scripts/kb-health.ps1` 出报告（目录税 / 复核状态与 90 天过期 / 条目体积 / 悬空指针 / ENV-005 不变式 / 债务）；`scripts/verify-kb.ps1` 跑 `references/verify-checks.json` 里的可执行判据，输出三态 OK / FAIL / MANUAL 并检查悬空检查项。
+**脚本用法**（ENV-027）：本机 `CurrentUser = RemoteSigned`，未签名脚本须先 `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force`；所有 `.ps1` 带 BOM（ENV-003）；读写一律显式 UTF-8（ENV-005）。
 
 **已提升为独立技能的主题**（正文以该技能为准）：浏览器/无头渲染 → `edge-browser-testing`；插件安装与 profile → `dsh-plugin-install`；配置读写与编码 → `windows-config-safe-edit`；MSIX/WindowsApps → `windows-msix-app-repair`。其余条目（含 ENV-024 目录税、ENV-025 PS5.1 吞 stderr）正文在本库。
 

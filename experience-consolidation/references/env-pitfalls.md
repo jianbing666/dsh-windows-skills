@@ -7,31 +7,31 @@
 > **默认适用环境（基线）**：Windows 11 + Windows PowerShell 5.1（无 pwsh 7）+ 系统 ACP 936 + DSH Desktop 2.0.11；条目未单独标注时即继承本基线。
 > **复核规则**：装 PS7 / 换机器 / 升级 DSH 主版本后，凡单独标注了「适用环境」的条目必须重新验证；每 90 天做一次体检。
 
-## 条目清单（25 条）
+## 条目清单（28 条）
 
 **[ENV-001] Windows 下 PowerShell 不等待 GUI 程序**
-- 适用环境：Windows + 任意 PowerShell ｜ 最后验证：未复核（初次记录 2026-09）
+- 适用环境：Windows + 任意 PowerShell ｜ 最后验证：无（初次记录 2026-09）
 - 现象：启动 GUI 程序（浏览器、Electron 应用等）的命令立即返回，随后的检测语句在目标尚未就绪时执行，得到假阴性结果（如“白屏”“无输出”）。
 - 根因：Win32 GUI 子系统进程与调用方无标准输出/退出码关联，shell 不会阻塞等待。
 - 方案：不要以命令返回作为就绪依据；改用轮询真实信号（端口连通性、CDP/DevTools 端点、窗口/DOM `title`），或使用带健康检查的托管后台任务。
 - 验证信号：能取到预期的端口响应或 `title`，而非“进程存在”。
 
 **[ENV-002] 沙箱禁止创建命名管道（piped stdio）**
-- 适用环境：DSH 沙箱（workspace-write 及更严） ｜ 最后验证：未复核（初次记录 2026-09）
+- 适用环境：DSH 沙箱（workspace-write 及更严） ｜ 最后验证：无（初次记录 2026-09）
 - 现象：以默认 `stdio: 'pipe'` 启动子进程并捕获其输出时，报 `EPERM`（如 Node.js `child_process.spawn/exec`）。
 - 根因：受限文件沙箱下禁止程序打开命名管道；这是策略边界，不是命令本身写错。
 - 方案：改用 `stdio: 'inherit'` 或 `stdio: 'ignore'`，或改由 PowerShell 自身的管道/重定向完成捕获；确需管道时一次性升级沙箱权限。
 - 验证信号：命令返回预期输出且无 `EPERM`；同一命令原样重试不应再用其他变体绕过。
 
 **[ENV-003] `.ps1` 脚本必须带 UTF-8 BOM**
-- 适用环境：Windows PowerShell 5.1 ｜ 最后验证：未复核（初次记录 2026-09）
+- 适用环境：Windows PowerShell 5.1 ｜ 最后验证：无（初次记录 2026-09）
 - 现象：脚本内含中文（路径、提示、日志）时执行报错或输出乱码，报语法/字符相关错误。
 - 根因：Windows PowerShell 5.x 按本地 ANSI 代码页解析无 BOM 的脚本文件，UTF-8 中文被误解析。
 - 方案：以带 BOM 的 UTF-8 保存 `.ps1`；或在 `pwsh` 7+ 下执行，并在脚本首行显式声明编码假设。
 - 验证信号：脚本执行成功且中文输出与源文件字符完全一致。
 
 **[ENV-004] 本机无 PowerShell 7：`pwsh` 工具实为 Windows PowerShell 5.1 执行**
-- 适用环境：本机基线（无 pwsh 7） ｜ 最后验证：2026-09-19 本机复核
+- 适用环境：本机基线（无 pwsh 7） ｜ 最后验证：2026-09-19（本机复核）
 - 现象：harness 的 `pwsh` 工具看似调用 PowerShell Core，实际由 `C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe` 执行，`$PSVersionTable.PSVersion` = 5.1.26100.9444、`PSEdition` = Desktop；`Get-Command pwsh` 返回 NOT FOUND。
 - 触发条件：任何依赖 PS7 语法的命令（三元 `? :`、`??`、`-Parallel`、`Get-Item -Depth` 等）。
 - 根因：环境未安装 PowerShell 7，`pwsh` 名称由宿主回落到 Windows PowerShell 5.1。
@@ -39,7 +39,7 @@
 - 验证信号：`$PSVersionTable.PSEdition` 与 `Get-Command pwsh` 的实际结果一致，且命令在 5.1 下无解析错误。
 
 **[ENV-005] Windows PowerShell 5.1 默认以 ANSI(cp936) 读取无 BOM 的 UTF-8 文件**
-- 适用环境：本机基线（ACP 936） ｜ 最后验证：2026-09-19 本机复核
+- 适用环境：本机基线（ACP 936） ｜ 最后验证：2026-09-19（本机复核）
 - 现象：`Get-Content` 读取无 BOM 的 UTF-8 中文文件时输出乱码（如 `褰撻亣鍒扮幆澧冩姤閿欍€?`），且 `(Get-Content $f).Count` 行数严重偏小（74 行的文件被数成 30 行）。
 - 触发条件：文件为 UTF-8 **无 BOM**、内容含非 ASCII 字符、读取时未显式指定 `-Encoding`。
 - 根因：PS 5.1 默认编码为系统 ACP（本机 = 936/GBK）；多字节解码时部分字节序列吞掉了后续的 `0x0A`，因此既乱码又丢行。文件本身是严格合法 UTF-8（`UTF8Encoding($false,$true).GetString()` 校验通过），缺陷在读取方而非文件。
@@ -59,7 +59,7 @@
 - 症状 → 处置：插件装完重启后完全不生效、工具与 UI 都不出现且**零报错**（静默失败：**非激活 profile 的 `dsh.profile.bundles` 根本不被启动流程读取**）→ 先读 `%APPDATA%\DSH Desktop\profile-selection\state.json` 取「激活 profile」并按它安装，再核对 bundles。详见 `dsh-plugin-install` 铁律 1。
 
 **[ENV-009] DSH 桌面端 `/api/desktop/*` 有 renderer token 闸门，外部进程一律 403**
-- 适用环境：DSH Desktop 2.0.11 ｜ 最后验证：未复核（初次记录 2026-09）
+- 适用环境：DSH Desktop 2.0.11 ｜ 最后验证：无（初次记录 2026-09）
 - 现象：从 pwsh/curl 调 `POST http://127.0.0.1:43120/api/desktop/restart`（Host / Origin / `Content-Type: application/json` / body `{}` 全都正确），返回 **纯文本 `forbidden`**，HTTP 403；换 `localhost` 同样 403。
 - 触发条件：在 DSH 进程**之外**调用任何 `/api/desktop/*` 变更接口。
 - 根因：`DesktopWebServer.permits()` → `decideDesktopBrowserAccess()`：普通浏览器只在 `mode === "compatibility" && openBrowser === true` 时放行；否则必须带 Electron renderer 的 **32 字节随机 token**（header `x-dsh-desktop-renderer`，每次启动重新生成、只存内存）。本机 `mode: extended` + `openBrowser: false` → `ordinaryBrowserEnabled = false`。
@@ -80,13 +80,13 @@
 - 症状 → 处置：`dsh plugin … --help` 打印的是 **pnpm 的帮助**（不是在报错）→ `dsh plugin` 就是转发 bundled pnpm，故 pnpm 全部参数可用；成功后按「已安装状态」并入 `dsh.profile.bundles`（命令行 diff 不作数）。详见 `dsh-plugin-install`「本机环境事实」。
 
 **[ENV-013] 凭据解析优先级：继承环境 > 凭据文件 > `.env`（导致「密钥看起来没生效」）**
-- 适用环境：DSH 凭据层（跨平台） ｜ 最后验证：未复核（初次记录 2026-09）
+- 适用环境：DSH 凭据层（跨平台） ｜ 最后验证：无（初次记录 2026-09）
 - 症状 → 处置：`.credentials.yaml` 里存着 key A，实际调用却全用环境变量里的 key B（key A 显示「0 调用」、费用记在 key B）→ 根因是 `@deepseek-ai/dsh-credentials-local` 的 `resolve()` 顺序 **inherited(process env, 只读) → `$DSH_HOME/.credentials.yaml` → 项目 `.env` → `$DSH_HOME/.env`**（`lib/index.js:14-28,473-489`），继承环境压过凭据文件，被遮蔽的引用连 `set()` 都拒绝（`assertUnshadowed`，第 636 行）。**彻底隔离：给每个应用不同的凭据名**——DSH 侧改 `settings.yaml` 的 `llm-deepseek.apiKeyEnv`（默认 `DEEPSEEK_API_KEY`，热生效不必重启）并把新 key 加进 `.credentials.yaml` 的 `refs`；另一应用改自己的 `env_key`；最后删掉共享变量。
 - 验证信号：**指纹法**——`sha256(baseURL + "\0" + apiKey)` 写进 `$DSH_HOME/llm-deepseek/files-v3.json` 每条记录的 `scope`，用候选 key 各算一遍去匹配即可反推实际在用哪把；或读进程真实环境块（见 ENV-017）。
 - 相关技能：`windows-config-safe-edit`。
 
 **[ENV-014] DeepSeek 接口会偶发返回 401，不要把单次 401 当成 key 失效**
-- 适用环境：DeepSeek API（服务端行为） ｜ 最后验证：未复核（初次记录 2026-09）
+- 适用环境：DeepSeek API（服务端行为） ｜ 最后验证：无（初次记录 2026-09）
 - 现象：同一把 key，`/user/balance` 与 `/chat/completions` 时而 401、时而 200。401 文案为 `Authentication Fails, Your api key: ****ined is invalid`——注意掩码 `****ined` 与 key 的尾四位（如 `****<key-tail>`**对不上**。
 - 触发条件：短时间内的多次探测；疑似服务端限流或鉴权抖动。
 - 根因：判定为服务端侧的**间歇性拒绝**，不是 key 状态变化。证据：字面量传参与环境变量传参**码点完全一致**（长度 35、逐字符相等），却在先后两次请求中一次 401、一次 200。
@@ -101,7 +101,7 @@
 - 相关条目：ENV-001（GUI 程序不等候）、ENV-006（沙箱下进程树回收）。
 
 **[ENV-016] 应用会自己重写配置文件——diff 校验的基线会失效**
-- 适用环境：Windows + 会自改写配置的应用 ｜ 最后验证：未复核（初次记录 2026-09）
+- 适用环境：Windows + 会自改写配置的应用 ｜ 最后验证：无（初次记录 2026-09）
 - 现象：按备份逐行 diff 时出现**几十行差异**，看起来像文件被大面积写坏；实际是**应用启动后自行重写了配置**（如 Codex 启动后从 93 行缩到 69 行，删掉 `[mcp_servers.node_repl]` 段、归一化格式、并把 `model_reasoning_effort` 从 `low` 改成 `minimal`）。
 - 触发条件：校验发生在「应用启动/退出之后」，而备份取自应用启动之前。
 - 根因：被应用托管的配置由应用按自己的 schema 序列化写回，**不是**外部编辑造成的损坏。
@@ -110,12 +110,12 @@
 - 相关技能：`windows-config-safe-edit`。
 
 **[ENV-017] 读「运行中进程的真实环境」是排查密钥/变量类问题的唯一硬证据**
-- 适用环境：Windows（读运行中进程环境） ｜ 最后验证：未复核（初次记录 2026-09）
+- 适用环境：Windows（读运行中进程环境） ｜ 最后验证：无（初次记录 2026-09）
 - 症状 → 处置：harness 的 pwsh 子进程里 `$env:DEEPSEEK_API_KEY` 为空，于是误判变量不存在——**沙箱会过滤子进程环境中的敏感变量，造成假阴性**；根因是 `launchEnvironmentOf()` 取 `process.env`（`dsh-launch-environment/lib/index.js:66`），与工具子进程被裁剪过的环境不一致。方案：读目标进程 PEB 环境块（`OpenProcess(0x0410)` → `NtQueryInformationProcess(h,0,buf,48)` → `PEB+0x20` → `RTL_USER_PROCESS_PARAMETERS` → `+0x80`），成品脚本（随本技能发布，见 `scripts/`）：`peb-env-dump.ps1`（DSH）· `peb-env-codex.ps1`（codex/ChatGPT）；脚本写纯 ASCII 或用带 BOM 的 UTF-8（见 ENV-003/005）。
 - 验证信号：能读出 ≥60 个环境变量，且其中的 KEY 类变量与预期一致。
 
 **[ENV-018] 多应用共用同一个帐户时，按 key 分账要靠「不同的 key 名」，不是「不同的 key 值」**
-- 适用环境：多应用共用同一帐户 ｜ 最后验证：未复核（初次记录 2026-09）
+- 适用环境：多应用共用同一帐户 ｜ 最后验证：无（初次记录 2026-09）
 - 现象：给 DSH 与 Codex 各发一把新 key，控制台仍可能看不出谁花了多少；根因是两把 key 属**同一 DeepSeek 帐户**，`total_balance` 是帐户级的（两把 key 查余额返回**同一个数字**）。
 - 触发条件：同一帐户下多把 key 被不同应用使用。
 - 根因：余额是帐户维度，**按 key 统计的调用次数/消耗才是 key 维度**。若帐户下还挂着已删除的旧 key，控制台可能把消耗显示在旧 key 名下，造成「有效 key 显示 0 调用、已失效 key 却在计费」的错觉。
@@ -136,20 +136,20 @@
 - 症状 → 处置：MSIX 应用无桌面快捷方式、开始菜单无「打开文件所在位置」、更新后图标变空白 → 用 `Get-StartApps` 检索；快捷方式必须走 `explorer.exe` + `Arguments = shell:AppsFolder\<PFN>!<AppId>`（**禁直指 exe**），图标复制到不含版本号的稳定路径再以 `IconLocation = <路径>,0` 引用（如 `icon-chatgpt.ico`）。验收：`IconLocation` 目标 `Test-Path` 为 True 且路径不含版本号。详见 `windows-msix-app-repair`。
 
 **[ENV-022] 提权（UAC）子进程的输出必须落盘回读**
-- 适用环境：Windows + UAC 提权 ｜ 最后验证：未复核（初次记录 2026-09）
+- 适用环境：Windows + UAC 提权 ｜ 最后验证：无（初次记录 2026-09）
 - 现象：`Start-Process powershell -Verb RunAs -Wait -ArgumentList ...` 结束后，调用方**拿不到**被提权进程的任何 stdout；用户不点 UAC 时命令会一直挂着。
 - 方案：① 提权脚本把过程写进工作区日志（`Tee-Object -FilePath <workspace>\x.log`），主进程结束后 `Get-Content` 回读；② 提前告知用户"屏幕上会弹 UAC，请点【是】"；③ `Tee-Object` / `Out-File` 在 PS 5.1 默认写 **UTF-16LE**，用 `-Encoding UTF8` 读会显示"字符之间夹空格"——**别误判成乱码**（按 UTF-16 读，或脚本内改用 `Set-Content -Encoding utf8`）。
 - 验证信号：日志里出现预期步骤的成功行（如 `MOVE OK in 56s`），而不是只看 `Start-Process` 是否返回。
 
 **[ENV-023] 写密钥 / 改配置：不让明文进对话，且不拿 PowerShell 的读取结果判定"文件损坏"**
-- 适用环境：DSH（任意平台） ｜ 最后验证：未复核（初次记录 2026-09）
+- 适用环境：DSH（任意平台） ｜ 最后验证：无（初次记录 2026-09）
 - 场景 A（密钥不入对话）：harness 的 `write`/`edit` 工具要求把内容当参数传入（等于把密钥写进会话记录）。做法：先用 PS 读结构并**掩码输出**（`sk-xxxxxx…后四位`）；确认目标文件**纯 ASCII**（`non-ASCII = 0`，这样 PS 5.1 的 ACP 解码不可能出错）；再 `[IO.File]::ReadAllText($f,[Text.Encoding]::UTF8)` → `.Replace($old,$new)`（**最小化字面量替换**，保留原格式）→ `WriteAllText(..., UTF8Encoding($false))`。
 - 场景 B（乱码误判）：用 PS 5.1 的 `Get-Content -Raw` 读到 `鐜嬪皬鏄` **不能**判定文件已损坏（见 ENV-005）。本次据此误报"`config.toml` 中文路径是乱码、需要修"，实际文件完好——**必须用 harness 的 `read` 工具（进程内 UTF-8）交叉验证**后再下结论。
 - 验证信号：备份 SHA256 与原文件一致 + 真实解析器（`ConvertFrom-Json` / `tomllib`）`PARSE OK` + 新值 == 环境变量值 + 旧值残留 = False + `U+FFFD = 0` + 文件长度与格式未变。
 - 相关技能：`windows-config-safe-edit`。
 
 **[ENV-024] 技能目录税：每个技能的 name+description 每轮都会注入**
-- 适用环境：DSH Desktop 2.0.11（技能目录机制） ｜ 最后验证：2026-09-19 本机实测
+- 适用环境：DSH Desktop 2.0.11（技能目录机制） ｜ 最后验证：2026-09-19（本机实测）
 - 现象：技能越装越多，每个会话的**固定开销**随之上涨——**与你是否用到这些技能无关**。2026-09-19 基线：本机 7 个技能，name+description 合计 **1,540 字符 ≈ 616 tokens/轮**（最贵 `drawio-skill` 340 字符，最省 `experience-consolidation` 98 字符）。
 - 触发条件：新增技能，或把 description 写长（目录描述上限 `DEFAULT_CATALOG_DESCRIPTION_MAX_LENGTH = 500`）。
 - 根因：`dsh-tool-skill` 把每个技能的 name+description 组装进**每轮注入的目录**；而**正文只在调用时才读**（`dsh-skill-filesystem` 把「目录」与「正文」的生命周期分离，`references/`、`scripts/`、`assets/` 属按需资源）。结论：**正文体积几乎不影响常态成本，技能个数与描述长度才是**。
@@ -157,10 +157,34 @@
 - 验证信号：统计 `~/.dsh/skills/*/SKILL.md` 的 name+description **字符数**与技能**条目数**，与本条基线对比——只看这两个数，不看正文体积。
 
 **[ENV-025] PS 5.1 的 `$ErrorActionPreference='Stop'` 会把原生命令写到 stderr 的正常输出升级为终止错误**
-- 适用环境：Windows PowerShell 5.1（PSEdition=Desktop） ｜ 最后验证：2026-09-19 本机实测
+- 适用环境：Windows PowerShell 5.1（PSEdition=Desktop） ｜ 最后验证：2026-09-19（本机实测）
 - 现象：脚本里 `git bundle verify` 其实**成功**，脚本却当场中止并抛 `NativeCommandError`；报错文本是 git 打印的 **`… is okay`** —— 也就是把"成功的那句话"当成了致命错误。同类命令（`git checkout` / `git status` / `git clean` 等把进度与提示写 stderr 的）都会中招。
-- 触发条件：`$ErrorActionPreference='Stop'`（或 `-ErrorAction Stop`）**且**被调用的原生命令往 stderr 写任何内容——**哪怕它 exit 0**。
+- 触发条件：`$ErrorActionPreference='Stop'`（或 `-ErrorAction Stop`）**且**原生命令往 stderr 写内容**且该 stderr 被重定向/捕获**（`2>&1`、`*> $null` 等）——**哪怕它 exit 0**。只写 stderr 而不重定向**不会**升级为终止错误（2026-10-11 实测：`cmd /c 'echo x 1>&2'` 不中止，`cmd /c 'echo x 1>&2' 2>&1` 才中止）。
 - 根因：PS 5.1 把原生命令的 stderr 包装成 ErrorRecord；EAP=Stop 时该记录变成**终止性错误**，于是 `$LASTEXITCODE` 根本没机会被检查。PS 7 默认不再这样（除非开 `$PSNativeCommandUseErrorActionPreference`），所以本机（无 PS7）更容易踩。
 - 方案：跑原生命令的脚本段**不要用 EAP=Stop** —— 改用 `$ErrorActionPreference='Continue'` + **显式检查 `$LASTEXITCODE`**，或用 `2>&1 | ForEach-Object { … }` 把 stderr 当数据处理。**判据永远是退出码，不是"有没有报错"。**
 - 验证信号：脚本跑完全程且 `$LASTEXITCODE -eq 0`。对照实验：故意让命令只写 stderr 但 exit 0 —— EAP=Stop 下中止，Continue 下不中止。
 - 相关技能：`experience-consolidation`（本技能自己的自动化脚本反复踩这条）。
+
+**[ENV-026] PowerShell 三处静默退化：类型约束变量 / `@()` 管道 / `-split` 计数**
+- 适用环境：Windows PowerShell 5.1（前两项在 PS7 同样中招） ｜ 最后验证：2026-10-11 本机实测
+- 现象：① `param([string]$Spec)` 配同名局部变量 `$spec`，赋 `PSCustomObject` 时被**静默转成字符串** `"@{edits=...}"`，于是 `$spec.PSObject.Properties['edits']` 永远取不到，报出与根因无关的「规格缺少 edits 数组」；② `@(git log …) | Sort-Object -Unique` 在结果只有一个元素时返回**字符串**，`$x[0]` 取到首字符 `'d'`，把正确状态误报成「提交身份异常」；③ **同一个量用不同方法测得不同的数**：同一文件 `-split "\n"` 得 **167**、`Get-Content` 得 **166** 行、`0x0A` 字节数也是 **166** —— 于是「行数 == 换行数」这条判据在 `-split` 定义下**永远不成立**，把完全正常的文件误报成损坏；反过来我为了迁就 `-split` 把判据改成「行数 == 0x0A 数 + 1」，又与条目原本的定义**对不上**了。
+- 触发条件：局部变量与参数同名（PowerShell 变量名**大小写不敏感**）；`@()` 只包住管道首段而非**整条管道**；把「元素个数」当作「分隔符个数」；**判据的测量方法与被测条目所用的定义不一致**。
+- 根因：四处都是**静默转型 / 静默计数偏差 / 定义漂移**——不抛错、不告警，症状出现在离根因很远的地方，报错文本与真实原因无关。
+- 最终方案：① 局部变量绝不复用参数名（改名 `$specObj`）；② `@()` 包住**整条管道**；③ 拿不准计数定义时，**先把两种测法的实测值都打印出来**再决定判据；④ **判据必须与被测条目用同一个定义**——不可为了迁就自己选错的测法去「修正」判据。`Get-Content` 语境下「行数 == 0x0A 数」成立，`-split` 语境下是「元素数 == 0x0A 数 + 1」，两者不可混用。
+- 验证信号：断言**同时输出被测值的类型与实测计数**（不是只输出布尔结果），并写明用的是哪种计数定义；反例必须能实际复现（本条四个反例均已复现）。
+
+**[ENV-027] 执行策略 RemoteSigned 下未签名 `.ps1` 无法直接运行**
+- 适用环境：Windows + PS 5.1/7（本机 `CurrentUser = RemoteSigned`） ｜ 最后验证：2026-10-11 本机实测
+- 现象：`& .\script.ps1` 报「未对文件 … 进行数字签名。无法在当前系统上运行该脚本。」（`PSSecurityException` / `UnauthorizedAccess`）——**脚本本身没有任何问题**，但看起来像脚本写错了。
+- 触发条件：`Get-ExecutionPolicy -List` 里 CurrentUser（或更高优先级作用域）为 `RemoteSigned` / `AllSigned`，而脚本是本地新建、未签名。
+- 根因：策略在**脚本加载阶段**就拦截，早于任何一行脚本代码执行，所以脚本内部的 `try/catch` 无从生效。
+- 最终方案：调用前设**进程级**策略（不持久化、不需管理员）：`Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force`；或在外部以 `powershell -ExecutionPolicy Bypass -File <脚本>` 启动。
+- 验证信号：设置后同一命令返回**脚本自己的预期退出码**（如 `-SelfTest` 的 0），而不是 `PSSecurityException`。交付脚本时这条必须写进 README 用法。
+
+**[ENV-028] 密钥扫描器的两类系统性错误：模式漏掩码形态、模式不锚定上下文**
+- 适用环境：任意仓库的发布前敏感串闸门 ｜ 最后验证：2026-10-11 本机实测
+- 现象：① **假阴性**：`sk-[A-Za-z0-9]{16,}` 对真实泄漏形态 `sk-<6位>****<4位>` **永不命中**（`sk-` 之后很快被 `*` 截断），据此得出「全历史零命中」的错误结论；② **假阳性**：`\*{2,}[0-9a-z]{4}` 命中 markdown 的 `**bold**`，`api[_-]?key\s*[:=]` 命中正文里正常提到的变量名，第三方 README 的 `API_KEY="your-…-key"` 占位符被当成真令牌 —— 一个 markdown 为主的仓库因此报出 **25 处**假阳性。
+- 触发条件：模式只写「令牌长度」而不覆盖**掩码形态**；模式只写「关键字 + 赋值」而不要求**值本身像令牌**。
+- 根因：掩码把令牌截断，长度类模式必然失效；星号与赋值模式一旦脱离凭据上下文就失去区分力（markdown 强调语法、文档变量名、占位符全都会撞上）。
+- 最终方案：**四路交叉**（HEAD / 全历史每个 revision / **磁盘未跟踪文件** / **提交身份**——后两路 `git grep` 覆盖不到，身份必须用 `git log --format`）；模式一律「凭据上下文 + 像令牌的值」；加占位符排除 `(?i)your[-_]|xxx+|example|placeholder|change[-_]?me|dummy|fake|redact|sample|<[a-z0-9_-]+>`，**排除项不得包含裸省略号**（真实泄漏正是 `KEY=…af02` 形态）；二进制文件按 NUL 字节跳过。
+- 验证信号：`-SelfTest` 必须**真阳性 + 真阴性双向**通过；四路各报「已扫 N」且 `N > 0`；命中 0 **且** 覆盖率实测通过，才允许输出 `CLEAN`。**扫描器必须按文件名自我排除**——它内含的合成样本否则会把闸门自己报成泄漏，使发布永远无法通过。
