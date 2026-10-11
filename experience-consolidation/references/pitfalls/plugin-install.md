@@ -14,7 +14,7 @@
 
 **[ENV-011] 境外源：连续 3 次失败即熔断，要求用户换网络（继续换招是负收益）**
 - 适用环境：任意（网络 / registry 相关；适用面宽于插件安装） ｜ 最后验证：见 `dsh-plugin-install`（2026-09-19 手机热点转折；本库未独立复核）
-- 症状 → 处置：境外源（codeload.github.com / registry.npmjs.org）报 `EAI_AGAIN` / `SEC_E_NO_CREDENTIALS` / `ETIMEDOUT`，而同时刻 `node fetch` 却 200；换招连烧十几分钟无效 → **连续 3 次失败即熔断**：贴原报错 + 请用户切热点/VPN。**切网后把先前失败的那条命令原样重跑成功，才算确认根因**（换新招才成功说明没找到根因）。详见 `dsh-plugin-install` 铁律 2。
+- 症状 → 处置：境外源（codeload.github.com / registry.npmjs.org）报 `EAI_AGAIN` / `SEC_E_NO_CREDENTIALS` / `ETIMEDOUT`，而同时刻 `node fetch` 却 200；换招连烧十几分钟无效 → **连续 3 次失败即熔断**：贴原报错 + 请用户切热点/VPN。**切网后把先前失败的那条命令原样重跑成功，才算确认根因**（换新招才成功说明没找到根因）。详见 `dsh-plugin-install` 铁律 2。**口径修正（2026-10-11 实测）**：`SEC_E_NO_CREDENTIALS` 的根因是 **DSH 沙箱拿不到 Schannel 凭据**（特征是「HTTP 通 + HTTPS 全挂 + TCP 到 443 能连」），见 **ENV-030**——遇到它**先怀疑沙箱，不要去换网络**。
 
 **[ENV-012] `dsh plugin` 本质是「在 profile 目录里转发 pnpm」**
 - 适用环境：DSH Desktop 2.0.11 ｜ 最后验证：见 `dsh-plugin-install`（本库未独立复核）

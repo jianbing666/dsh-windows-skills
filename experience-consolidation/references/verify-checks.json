@@ -85,6 +85,17 @@
       "cmd": "& '{SCRIPTS}\\scan-secrets.ps1' -SelfTest *> $null",
       "expectExit": 0,
       "note": "自检必须真阳性 + 真阴性双向通过，否则闸门形同虚设"
+    },
+    "ENV-029": {
+      "kind": "expr",
+      "expr": "& { function f { param([string]$a,[int]$b) $a + '/' + $b }; $arr=@('-a','hello'); try { $null = f @arr; 'ok' } catch { 'threw' } }",
+      "op": "eq",
+      "value": "threw",
+      "note": "数组 splat 传的是位置参数：'-a' 落到 $a、'hello' 落到 [int]$b 必然抛错。若某天返回 ok，说明 PS 改了 splat 语义，本条须重判"
+    },
+    "ENV-030": {
+      "kind": "manual",
+      "note": "沙箱内必挂、放宽后必通，需两种沙箱模式各测一次，无法在单一进程内自动断言（判据：HTTP 通 + HTTPS 全挂 + TCP 到 443 能连）"
     }
   }
 }

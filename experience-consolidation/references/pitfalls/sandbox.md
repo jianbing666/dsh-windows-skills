@@ -23,3 +23,11 @@
   **判别技巧**：闸门返回的是**纯文本** `forbidden`；而路由处理器自身的同源校验失败返回的是 JSON `{"error":"forbidden"}` —— 可据此区分"被闸门挡了"还是"同源头不对"。
 - 方案：不要试图绕过、猜测或从内存捞 token。需要重启/退出时**交给用户**（托盘菜单 → 重启 / 关闭再打开）；这本身就是插件安装的必要收尾步骤。
 - 验证信号：用户确认重启完成，随后由运行时新暴露的能力确认插件已加载（如新工具出现在会话工具集里）。
+
+**[ENV-030] DSH 沙箱内一切 HTTPS 都失败：schannel 拿不到凭据、openssl 后端被命名管道禁令掐死**
+- 适用环境：DSH 沙箱（workspace-write 及更严）+ Windows ｜ 最后验证：2026-10-11（本机实测）
+- 现象：沙箱内**任何** HTTPS 都失败——`curl` 报 `schannel: AcquireCredentialsHandle failed: SEC_E_NO_CREDENTIALS (0x8009030E)`，`git` 报同一句；连 `baidu.com` / `taobao.com` / `npmmirror` 全挂，而**同一刻 HTTP（80 端口）200 正常**，TCP 到 443 也**能连上**（`www.baidu.com:443` 实测 OK）。
+- 触发条件：在 DSH 沙箱（非 danger-full-access）的进程里发起**任何** TLS 连接，**与目标站点无关**；换 `http.sslBackend=openssl` 同样失败（`sh.exe: couldn't create signal pipe, Win32 error 5` —— 沙箱禁止创建命名管道，即 ENV-002 同一堵墙）。
+- 根因：沙箱进程令牌拿不到 Schannel 客户端凭据，失败发生在「建凭据」阶段——**既不是墙、不是 DNS、更不是网络**；而 Git for Windows 的 OpenSSL 路径要经 `sh.exe`，恰好撞上命名管道禁令，于是**两条 TLS 路径都被沙箱掐死**。
+- 最终方案：把该命令放到 **`danger-full-access`** 下执行（实测放宽后 `baidu`/`example` 立即 200、`git ls-remote` 走完 TLS）。**绝不**按「境外源不稳」去换网络——那会把排查引向错路（ENV-011 把三种报错并列，就埋了这个坑）；另有中间人/加速器证书场景需 `git config http.schannelCheckRevoke false`（否则 `CRYPT_E_NO_REVOCATION_CHECK`），但那是**放宽沙箱之后**才会遇到的第二层。
+- 验证信号：沙箱内 `curl -o NUL -w "%{http_code}" https://www.baidu.com` 得 `000`（exit 35）**且** `http://example.com` 得 `200` → 即判为沙箱而非网络；放宽沙箱后**同一条命令**变 `200`。判据是「HTTP 通 + HTTPS 全挂 + TCP 到 443 能连」这个组合，单看任一列都会误判。

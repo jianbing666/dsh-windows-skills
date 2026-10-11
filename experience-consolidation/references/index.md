@@ -36,3 +36,4 @@
 | ENV-027 | 执行策略 RemoteSigned 下未签名 `.ps1` 无法直接运行 | pitfalls/powershell.md |
 | ENV-028 | 密钥扫描器的两类系统性错误：模式漏掩码形态、模式不锚定上下文 | pitfalls/publishing.md |
 | ENV-029 | PowerShell 参数语义两处静默失真：数组 splat 传位置参数、`-LiteralPath` 不展开通配符 | `pitfalls/powershell.md` |
+| ENV-030 | DSH 沙箱内一切 HTTPS 都失败：schannel 拿不到凭据、openssl 后端被命名管道禁令掐死 | `pitfalls/sandbox.md` |
