@@ -4,6 +4,15 @@
 > 条目格式（现象 / 触发条件 / 根因 / 方案 / 验证信号，另加「适用环境」「最后验证」）与体量上限见 `../../SKILL.md`。
 > **一事一主**：正文以某独立技能为准的条目，本文件只留摘要与指针。
 
+> 症状：插件 / profile / pnpm / 锁文件 / registry / 熔断
+
+<!-- ec-ids:begin（生成物：scripts/kb-index.ps1，勿手改）-->
+- ENV-008 · DSH 插件按 profile 隔离：README 写的 `--profile` 常常不…
+- ENV-010 · pnpm 对 registry 的 HEAD 超时 → 锁文件缺 integrity →…
+- ENV-011 · 境外源：连续 3 次失败即熔断，要求用户换网络（继续换招是负收益）
+- ENV-012 · `dsh plugin` 本质是「在 profile 目录里转发 pnpm」
+<!-- ec-ids:end -->
+
 **[ENV-008] DSH 插件按 profile 隔离：README 写的 `--profile` 常常不是本机激活的那个**
 - 适用环境：DSH Desktop 2.0.11 / profile 机制 ｜ 最后验证：见 `dsh-plugin-install`（本库未独立复核）
 - 症状 → 处置：插件装完重启后完全不生效、工具与 UI 都不出现且**零报错**（静默失败：**非激活 profile 的 `dsh.profile.bundles` 根本不被启动流程读取**）→ 先读 `%APPDATA%\DSH Desktop\profile-selection\state.json` 取「激活 profile」并按它安装，再核对 bundles。详见 `dsh-plugin-install` 铁律 1。

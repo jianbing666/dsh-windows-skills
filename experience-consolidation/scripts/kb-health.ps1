@@ -11,15 +11,15 @@
   本脚本把体检变成一条命令，产出八段：
     1. 目录税（ENV-024）：技能条目数 + 各技能 name/description 字符数
     2. 避坑条目：总数 + 可机读的复核状态 + **90 天过期清单**（B5 结构化后才真正可算）
-    3. 条目体积：超过 ≤8 行上限的条目
+    3. 条目体积：超过 ≤10 行上限的条目（B13：加「弯路」后从 8 提到 10）
     4. 悬空指针：「相关技能：X」/「正文以 X 为准」/「详见 `X`」/「最后验证：见 `X`」里的 X 技能是否存在
     5. ENV-005 动态不变式：**逐文件**严格 UTF-8 解码 && 行结构未被吞掉
     6. 债务：标了「⚠ 待并入 <技能>」的条目数
     7. 退役候选（B10）：满足 K1 冗余 ∧ K2 已自证 的条目，并预告「归档后哪些域文件会变空」
-    8. 索引一致性：每条 id 在 index.md 中恰好出现一次（拆域后索引与正文脱节是新的腐烂点）
+    8. 索引新鲜度（B11）：index.md 与各域文件头清单都是 `kb-index.ps1` 的生成物，判「是否最新」而不是「逐条对不对得上」
 
   B8 起的库结构（不再是单文件）
-    references/index.md        ← 先读它定位域，≤40 行
+    references/index.md        ← 先读它：域级路由表（生成物，不随条目数增长）
     references/pitfalls/*.md   ← 8 个域文件（按域只读一个）
     references/pitfalls/archive.md ← 退役区（退出常规阅读路径，不删除）
     **没有** references/env-pitfalls.md（B8 已拆分；旧名不再存在，避免双份真相）
@@ -113,6 +113,8 @@ foreach ($f in $allKbFiles) {
     $e = if ($i + 1 -lt $marks.Count) { $marks[$i + 1].Index } else { $ft.Length }
     $body = $ft.Substring($s, $e - $s)
     $id = $marks[$i].Groups[1].Value
+    # 作用域（B12）：global = 跨项目共性；project:<工作区名> = 只在本项目成立
+    $scope = [regex]::Match($body, '作用域：([^\r\n｜|]+)').Groups[1].Value.Trim()
     $bodyById[$id] = $body
     # 字段名集合（用于判「是不是只剩一行摘要」）
     $fields = @([regex]::Matches($body, '(?m)^- ([^：:\r\n]{2,10})[：:]') | ForEach-Object { $_.Groups[1].Value })
@@ -124,10 +126,14 @@ foreach ($f in $allKbFiles) {
       Lines = ($body -split "`n").Count
       Verify = [regex]::Match($body, '最后验证：([^\r\n｜|]+)').Groups[1].Value.Trim()
       Fields = $fields
-      SingleLine = (($fields.Count -eq 2) -and ($fields -contains '症状 → 处置'))
+      Scope = $scope
+      SingleLine = ((@($fields | Where-Object { $_ -ne '作用域' }).Count -eq 2) -and ($fields -contains '症状 → 处置'))
     }
   }
 }
+# 缺「作用域」的条目（B12 起新条必填；旧条按 global 推定，体检里当债务逐步补）
+$scopeMissing = @($entries | Where-Object { -not $_.Archived -and $_.Scope.Length -eq 0 } | ForEach-Object { $_.Id })
+
 $kbText = ($allKbFiles | ForEach-Object { [System.IO.File]::ReadAllText($_.FullName, [System.Text.Encoding]::UTF8) }) -join "`n"
 $indexText = [System.IO.File]::ReadAllText($indexPath, [System.Text.Encoding]::UTF8)
 
@@ -138,7 +144,7 @@ $delegated = @($entries | Where-Object { $_.Verify -match '^见 `[a-z0-9-]+`' })
 $unparsed = @($entries | Where-Object {
   $_.Verify -notmatch '^\d{4}-\d{2}-\d{2}' -and $_.Verify -notmatch '^无' -and $_.Verify -notmatch '^见 `[a-z0-9-]+`'
 })
-$oversized = @($entries | Where-Object { $_.Lines -gt 8 })
+$oversized = @($entries | Where-Object { $_.Lines -gt 10 })
 
 # 90 天过期计算（只有「带日期」的条目参与）
 $today = Get-Date
@@ -198,20 +204,28 @@ foreach ($g in ($kbFiles | ForEach-Object { $_.Name })) {
   if ($inFile.Count -gt 0 -and $stay.Count -eq 0) { $emptied += $g }
 }
 
-# ---------- 8. 索引一致性 ----------
-$indexMiss = @($entries | Where-Object { ([regex]::Matches($indexText, [regex]::Escape("| $($_.Id) |"))).Count -ne 1 } | ForEach-Object { $_.Id })
-$indexExtra = @()
-foreach ($m in [regex]::Matches($indexText, '(?m)^\|\s*(ENV-\d+)\s*\|')) {
-  if ($bodyById.Keys -notcontains $m.Groups[1].Value) { $indexExtra += $m.Groups[1].Value }
+# ---------- 8. 索引新鲜度（B11：索引与域文件头清单都是生成物）----------
+# 旧做法是「每条 id 在 index.md 里恰好出现一次」的双射校验——那是在给「索引逐条登记」
+# 这个结构打补丁。B11 起索引只做域级路由，条目清单在各域文件头，统一由 kb-index.ps1 生成，
+# 所以这里改判「生成物是否最新」：直接调生成器的 -Check，不复制第二份判据。
+$idxBytes = 0; $idxLines = 0
+$idxFresh = $false
+$idxStale = @()
+$idxScript = Join-Path $PSScriptRoot 'kb-index.ps1'
+if (Test-Path -LiteralPath $indexPath) {
+  $idxBytes = (New-Object System.Text.UTF8Encoding($false)).GetByteCount($indexText)
+  $idxLines = @($indexText.TrimEnd("`n") -split "`n").Count
 }
-# 索引里的「域文件」列与实际落盘位置是否一致（脱节了就会把读者指错文件）
-$indexMismatch = @()
-foreach ($m in [regex]::Matches($indexText, '(?m)^\|\s*(ENV-\d+)\s*\|[^|]*\|\s*`pitfalls/([a-z-]+\.md)`\s*\|')) {
-  $id = $m.Groups[1].Value; $f = $m.Groups[2].Value
-  if ($bodyById.ContainsKey($id)) {
-    $actual = ($entries | Where-Object { $_.Id -eq $id }).File
-    if ($actual -ne $f) { $indexMismatch += ("{0}: 索引写 {1}，实际在 {2}" -f $id, $f, $actual) }
-  }
+if (Test-Path -LiteralPath $idxScript) {
+  $old = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  $verbose = @(& $idxScript -RefDir $refDir -Check 2>&1 | ForEach-Object { "$_" })
+  $code = $LASTEXITCODE
+  $ErrorActionPreference = $old
+  $idxStale = @($verbose | Where-Object { $_ -match '^\[(stale|missing)\]' })
+  $idxFresh = ($code -eq 0)
+} else {
+  $idxStale = @('[missing] scripts/kb-index.ps1（索引生成器不存在）')
 }
 
 # ---------- 5. ENV-005 动态不变式（逐文件；Get-Content 语义！）----------
@@ -256,7 +270,7 @@ if ($Json) {
       Rule = 'K1 冗余（最后验证=见 <技能> 且正文只剩一行摘要）∧ K2 已自证（verify kind=pointer 且目标技能存在）'
     }
     Dangling = $dangling
-    Index = [pscustomobject]@{ Missing = $indexMiss; Ghost = $indexExtra; Mismatch = $indexMismatch; Lines = @($indexText.TrimEnd("`n") -split "`n").Count }
+    Index = [pscustomobject]@{ Fresh = $idxFresh; Stale = $idxStale; Bytes = $idxBytes; Lines = $idxLines; ScopeMissing = @($scopeMissing) }
     Env005 = $ifx
     Debt = $debt
   } | ConvertTo-Json -Depth 6
@@ -289,7 +303,7 @@ if ($stale.Count -gt 0) { Write-Host ("      ⚠ 过期条目：{0}" -f (($stale
 else { Write-Host ("      过期条目：0（阈值 {0} 天）" -f $StaleDays) }
 
 Write-Host ''
-Write-Host '[3] 条目体积（上限 <= 8 行）'
+Write-Host '[3] 条目体积（上限 <= 10 行；B13 起「弯路」字段占 2 行）'
 if ($oversized.Count -eq 0) { Write-Host '    全部合规' }
 else { foreach ($o in $oversized) { Write-Host ("      {0}  {1} 行  {2}" -f $o.Id, $o.Lines, $o.Title) } }
 
@@ -315,6 +329,7 @@ Write-Host '    不得与写死的常量比较——本条曾因写死 151 而�
 Write-Host ''
 Write-Host '[6] 债务'
 Write-Host ("    标了「⚠ 待并入 <技能>」的条目：{0}" -f $debt)
+Write-Host ("    缺「作用域」字段的条目（B12 债务，新条必填）：{0}{1}" -f $scopeMissing.Count, $(if ($scopeMissing.Count -gt 0) { '：' + ($scopeMissing -join ', ') } else { '' }))
 
 Write-Host ''
 Write-Host '[7] 退役候选（B10：K1 冗余 ∧ K2 已自证）'
@@ -332,14 +347,14 @@ if ($retire.Count -gt 0) {
 }
 
 Write-Host ''
-Write-Host '[8] 索引一致性（index.md vs 域文件）'
-$idxLines = @($indexText.TrimEnd("`n") -split "`n").Count
-Write-Host ("    index.md 行数 {0}（上限 40）" -f $idxLines)
-if ($indexMiss.Count -eq 0) { Write-Host '    每条 id 在索引中恰好出现一次' }
-else { Write-Host ("    ⚠ 索引缺失/重复：{0}" -f ($indexMiss -join ', ')) }
-if ($indexExtra.Count -gt 0) { Write-Host ("    ⚠ 索引里有正文不存在的 id：{0}" -f ($indexExtra -join ', ')) }
-foreach ($mm in $indexMismatch) { Write-Host ("    ⚠ 域文件列与实际不符：{0}" -f $mm) }
+Write-Host '[8] 索引新鲜度（B11：index.md 与各域文件头清单都是生成物）'
+Write-Host ("    index.md {0} 行 / {1} 字节（判据：只做域级路由，不随条目数增长）" -f $idxLines, $idxBytes)
+if ($idxFresh) {
+  Write-Host '    与域文件一致（kb-index.ps1 -Check 通过）'
+} else {
+  foreach ($s in $idxStale) { Write-Host ("    ⚠ " + $s) }
+  Write-Host '    → 跑 scripts/kb-index.ps1 -Apply 重建（预览不加 -Apply）'
+}
 
-Write-Host ''
 Write-Host '================ 体检结束 ================'
 exit 0

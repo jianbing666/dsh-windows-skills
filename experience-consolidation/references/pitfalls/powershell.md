@@ -4,6 +4,19 @@
 > 条目格式（现象 / 触发条件 / 根因 / 方案 / 验证信号，另加「适用环境」「最后验证」）与体量上限见 `../../SKILL.md`。
 > **一事一主**：正文以某独立技能为准的条目，本文件只留摘要与指针。
 
+> 症状：pwsh / pwsh7 / 编码 / BOM / 参数 / 执行策略 / 退出码 / 静默退化
+
+<!-- ec-ids:begin（生成物：scripts/kb-index.ps1，勿手改）-->
+- ENV-003 · `.ps1` 脚本必须带 UTF-8 BOM
+- ENV-004 · 本机无 PowerShell 7：`pwsh` 工具实为 Windows PowerSh…
+- ENV-005 · Windows PowerShell 5.1 默认以 ANSI(cp936) 读取无 B…
+- ENV-022 · 提权（UAC）子进程的输出必须落盘回读
+- ENV-025 · PS 5.1 的 `$ErrorActionPreference='Stop'` 会把原…
+- ENV-026 · PowerShell 三处静默退化：类型约束变量 / `@()` 管道 / `-spli…
+- ENV-027 · 执行策略 RemoteSigned 下未签名 `.ps1` 无法直接运行
+- ENV-029 · PowerShell 参数语义两处静默失真：数组 splat 传位置参数、`-Liter…
+<!-- ec-ids:end -->
+
 **[ENV-003] `.ps1` 脚本必须带 UTF-8 BOM**
 - 适用环境：Windows PowerShell 5.1 ｜ 最后验证：无（初次记录 2026-09）
 - 现象：脚本内含中文（路径、提示、日志）时执行报错或输出乱码，报语法/字符相关错误。

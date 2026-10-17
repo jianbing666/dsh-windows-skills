@@ -11,9 +11,9 @@
   这条命令做四件事，缺一件就不算闭环：
     1. 读暂存 → 定位 `## 待提升` 区的条目（`**[PEND-nn] …**` 或 `**[ENV-nnn] …**`）
     2. 定归属 → `-Domain` 显式指定，或按关键词自动判域（判不出来就**报错**，不猜）
-    3. 落盘   → 追加到 `references/pitfalls/<域>.md`，在 `index.md` 按编号插入一行，
+3. 落盘   → 追加到 `references/pitfalls/<域>.md`，再用 `kb-index.ps1 -Apply` 重建 index.md 与域头清单，
                 并在暂存文件的「已提升」表里记一笔（**不删除条目正文之外的痕迹**）
-    4. 跑校验 → `kb-health.ps1`（索引一致性等）+ `verify-kb.ps1 -Strict`（可执行判据闸门）
+4. 跑校验 → `kb-index.ps1 -Check`（索引新鲜度）+ `kb-health.ps1` + `verify-kb.ps1 -Strict`（可执行判据闸门）
 
   安全约定（五步安全编辑）
     · **默认是彩排**：不加 `-Apply` 只打印将要发生的改动，一个字节都不写。
@@ -170,20 +170,20 @@ if ($Retract) {
   foreach ($mm in $allMarks) { if ($mm.Index -gt $s) { $e = $mm.Index; break } }
   $block = $txt.Substring($s, $e - $s).TrimEnd("`n")
   $newTxt = ($txt.Substring(0, $s) + $txt.Substring($e)).TrimEnd("`n") + "`n"
-  # 撤掉索引行
-  $idxLines = @($indexText -split "`n") | Where-Object { $_ -notmatch ('^\|\s*' + [regex]::Escape($Id) + '\s*\|') }
+# 索引与域头清单交给生成器重建（B11：不再手改索引）
   # 撤掉记账行
   $pendLines = @($pendAll -split "`n") | Where-Object { -not ($_ -match ('^\| \d{4}-\d{2}-\d{2} \|.*' + [regex]::Escape($Id))) }
 
   Write-Host ''
   Write-Host ("将撤回 {0}（{1} 行）" -f $Id, (@($block -split "`n").Count))
   Write-Host ("  从 {0} 移除条目块" -f (Split-Path $srcFile -Leaf))
-  Write-Host ("  从 index.md 移除索引行；从记账表移除记账行；条目内容移回「待提升」区")
+  Write-Host ("  kb-index.ps1 -Apply 重建索引；从记账表移除记账行；条目内容移回「待提升」区")
   if (-not $Apply) { Write-Host ''; Write-Host '彩排结束（未写盘）。'; exit 0 }
 
-  $bk1 = New-Backup $srcFile; $bk2 = New-Backup $indexPath; $bk3 = New-Backup $Pending
+$bk1 = New-Backup $srcFile; $bk3 = New-Backup $Pending
   [System.IO.File]::WriteAllText($srcFile, $newTxt, (New-Object System.Text.UTF8Encoding($false)))
-  [System.IO.File]::WriteAllText($indexPath, (($idxLines -join "`n").TrimEnd("`n") + "`n"), (New-Object System.Text.UTF8Encoding($false)))
+& (Join-Path $PSScriptRoot 'kb-index.ps1') -RefDir $refDir -Apply | Out-Null
+if ($LASTEXITCODE -ne 0) { throw ('索引重建失败（kb-index.ps1 exit {0}）' -f $LASTEXITCODE) }
   # 把条目写回待提升区（**断言已写进去才落盘**，否则撤回会把条目弄丢）
   $pt = $pendLines -join "`n"
   if ($pt.IndexOf('_（暂无）_') -ge 0) {
@@ -196,7 +196,7 @@ if ($Retract) {
   }
   if ($pt.IndexOf($block) -lt 0) { throw '撤回失败：条目内容未能写回「待提升」区' }
   [System.IO.File]::WriteAllText((Resolve-Path -LiteralPath $Pending).Path, $pt, (New-Object System.Text.UTF8Encoding($false)))
-  Write-Host ("已写盘（备份：{0} / {1} / {2}）" -f (Split-Path $bk1 -Leaf), (Split-Path $bk2 -Leaf), (Split-Path $bk3 -Leaf))
+Write-Host ("已写盘（备份：{0} / {1}）" -f (Split-Path $bk1 -Leaf), (Split-Path $bk3 -Leaf))
   exit 0
 }
 
@@ -244,7 +244,7 @@ foreach ($p in $plan) {
 # ---- 断言（全部在写盘之前）----
 foreach ($p in $plan) {
   if ($kbMap.ContainsKey($p.NewId)) { throw ("编号冲突：{0}" -f $p.NewId) }
-  if (([regex]::Matches($indexText, [regex]::Escape("| $($p.NewId) |"))).Count -ne 0) { throw ("索引里已有 {0}" -f $p.NewId) }
+  if ($p.Body -notmatch '作用域：') { throw ("条目 {0} 缺少「作用域：global」或「作用域：project:<工作区名>」字段（B12 起新条必填）" -f $p.LocalId) }
   if (([regex]::Matches($pendAll, ('\|[^|\r\n]*' + [regex]::Escape($p.NewId) + '[^|\r\n]*\|'))).Count -ne 0) { throw ("记账表里已有 {0}" -f $p.NewId) }
   $tgt = Join-Path $pitDir $p.Domain
   if (-not (Test-Path -LiteralPath $tgt)) { throw ("目标域文件不存在：{0}" -f $tgt) }
@@ -253,7 +253,7 @@ foreach ($p in $plan) {
 if (-not $Apply) {
   Write-Host ''
   Write-Host '将改动（彩排，未写盘）：'
-  foreach ($p in $plan) { Write-Host ("  追加到 references/pitfalls/{0}；index.md 插入 | {1} | … | 指向 {0} |；记账表新增一行" -f $p.Domain, $p.NewId) }
+  Write-Host ("  追加到 references/pitfalls/{0}；kb-index.ps1 -Apply 重建索引与域头清单；记账表新增一行" -f $p.Domain)
   Write-Host ''
   Write-Host '彩排结束（未写盘）。确认无误后加 -Apply。'
   exit 0
@@ -268,32 +268,18 @@ foreach ($p in $plan) {
   $cur = $cur.TrimEnd("`n") + "`n`n" + $p.Body.TrimEnd("`n") + "`n"
   [System.IO.File]::WriteAllText($tgt, $cur, (New-Object System.Text.UTF8Encoding($false)))
 }
-$touched[$indexPath] = (New-Backup $indexPath)
 $pendReal = (Resolve-Path -LiteralPath $Pending).Path
 $touched[$pendReal] = (New-Backup $pendReal)
 
-# 索引：按编号插入
-$lines = New-Object System.Collections.ArrayList
-foreach ($l in ($indexText -split "`n")) { [void]$lines.Add($l) }
-foreach ($p in ($plan | Sort-Object { [int]($_.NewId -replace '^ENV-', '') })) {
-  $num = [int]($p.NewId -replace '^ENV-', '')
-  $insertAt = -1
-  for ($i = 0; $i -lt $lines.Count; $i++) {
-    $m = [regex]::Match($lines[$i], '^\|\s*(ENV-(\d+))\s*\|')
-    if ($m.Success -and [int]$m.Groups[2].Value -gt $num) { $insertAt = $i; break }
-  }
-  # ⚠️ 必须用**单引号**格式串：双引号里 `p 会被 PowerShell 当转义序列吃掉反引号，
-  #    结果索引行写成 | … | pitfalls/x.md | 少了反引号（2026-10-11 实测）
-  $row = ('| {0} | {1} | `pitfalls/{2}` |' -f $p.NewId, $p.Title, $p.Domain)
-  if ($insertAt -ge 0) { $lines.Insert($insertAt, $row) } else {
-    # 追加到最后一个索引行之后
-    $last = -1
-    for ($i = 0; $i -lt $lines.Count; $i++) { if ($lines[$i] -match '^\|\s*ENV-\d+\s*\|') { $last = $i } }
-    if ($last -lt 0) { throw '索引里找不到任何条目行，无法插入' }
-    $lines.Insert($last + 1, $row)
-  }
-}
-[System.IO.File]::WriteAllText($indexPath, (($lines -join "`n").TrimEnd("`n") + "`n"), (New-Object System.Text.UTF8Encoding($false)))
+# 索引与各域头部清单：交给生成器重建（B11 起索引不再是人手维护的第二份真相）
+$idxScript = Join-Path $PSScriptRoot 'kb-index.ps1'
+if (-not (Test-Path -LiteralPath $idxScript)) { throw ('找不到索引生成器：{0}' -f $idxScript) }
+$old = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+& $idxScript -RefDir $refDir -Apply | Out-Null
+$idxCode = $LASTEXITCODE
+$ErrorActionPreference = $old
+if ($idxCode -ne 0) { throw ('索引重建失败（kb-index.ps1 exit {0}）——域文件已写入，索引未同步，请先修复再重跑' -f $idxCode) }
 
 # 暂存：清空待提升 → 记一行账
 # ⚠️ 重建区块时必须把 `## 待提升` 标题本身写回来：$secA 指向标题首个字符，只取 Substring(0,$secA) 会把标题整行丢掉
@@ -311,7 +297,7 @@ foreach ($p in $plan) {
 
 Write-Host ''
 Write-Host ("已写盘：{0} 个文件（备份同目录 *.bak-*）" -f ($touched.Keys.Count))
-foreach ($p in $plan) { Write-Host ("  {0} -> pitfalls/{1}（索引与记账已同步）" -f $p.NewId, $p.Domain) }
+  Write-Host ("  {0} -> pitfalls/{1}（索引已由 kb-index.ps1 重建、记账已留痕）" -f $p.NewId, $p.Domain)
 
 if ($SkipValidate) { Write-Host '已跳过校验（-SkipValidate）。'; exit 0 }
 

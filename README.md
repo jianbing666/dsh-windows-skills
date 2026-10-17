@@ -109,7 +109,10 @@ These are **on-demand resources** — they cost **zero** catalog tokens (only `n
 | --- | --- |
 | `safe-edit.ps1` | The five-step safe edit: backup → **assert before writing** → explicit UTF-8 write → strict validation → restore-on-failure. Each failure class has its own exit code. |
 | `scan-secrets.ps1` | Four-path × context-anchored secret scan (HEAD / every revision / untracked files on disk / commit identities). `-SelfTest` proves true positives **and** true negatives. |
-| `kb-health.ps1` | One-command health report: catalog tax, verification status + 90-day staleness, oversized entries, dangling pointers, the **per-file** ENV-005 invariant, outstanding debt, **retirement candidates**, and index consistency. |
+| `kb-health.ps1` | One-command health report: catalog tax, verification status + 90-day staleness, oversized entries, dangling pointers, the **per-file** ENV-005 invariant, outstanding debt (missing `scope` included), **retirement candidates**, and **index freshness**. |
+| `kb-index.ps1` | Regenerates `references/index.md` + each domain file's entry list from the domain files (`-Apply`), or just checks freshness (`-Check`). The index is a **build artifact**: 9 routing rows, never grows with entry count. |
+| `inbox-add.ps1` | Appends **one line** to `<workspace>/.dsh/inbox.md`: the lowest-threshold way to capture a pitfall *at the moment* it bites. No approval needed (inside the workspace). |
+| `kb-probe.mjs` | Reads real session logs (zstd, multi-frame) and reports whether the hook fired, the skill was loaded, and inbox/pending were written. The only tool that can **falsify** "the mechanism works". |
 | `verify-kb.ps1` | Runs the executable checks in `references/verify-checks.json`, reporting OK / FAIL / MANUAL, dangling check ids, and unknown placeholders. |
 | `dedup-scan.ps1` | Scores a candidate pitfall against every skill's `(name, description, whenToUse)`, so "which skill owns this?" is computed rather than eyeballed. |
 | `promote-pending.ps1` | Closes the staging loop: promote entries from `.dsh/pending-pitfalls.md` into the right domain file, update the ledger, then run the validators. |
@@ -176,6 +179,30 @@ GitHub-first is enough. To reach the DSH community market, package the repo with
 `@deepseek-ai/dsh-skill-filesystem`'s `bundledSkillDir` (rank 600) so that `dsh plugin add`
 can install it.
 
+## 变更记录（B11 → B13）
+
+### B11 · 索引变成生成物
+
+`references/index.md` 从「逐条登记 id / 标题 / 域文件」改为**域级路由**（9 行）：
+条目清单移到各域文件头部，由 `kb-index.ps1` 生成。实测 31 条时索引 4419 → 1875 字节，
+**加卡不再增加路由成本**。理由：逐条索引是域文件元数据的第二份副本，必然漂移，
+而防漂移只能再加一条双射校验——那是给刚造出来的错打补丁。
+
+### B12 · 双层库：系统级共享 / 项目级隔离
+
+每条目新增 `作用域：global | project:<工作区名>`。判断只有一条：**换个工作区还成立吗**。
+成立 → 全局库（共享、不重复踩）；不成立 → `<workspace>/.dsh/pitfalls/`（隔离、不污染）。
+`promote-pending.ps1` 对缺该字段的条目**直接拒收**。存量条目按 `global` 推定，体检里当债务逐步补。
+
+### B13 · 反面清单 + inbox + 探针
+
+- **弯路清单字段**：条目新增「试过且不通的路 + 为什么不通」，单条上限 8 → 10 行。
+  只有正面流程的条目等于一份不完整的技能。
+- **inbox 一行制**：`<workspace>/.dsh/inbox.md`。实测「收尾补卡」两次都没自发发生，
+  而「踩坑当下记一行」是唯一被观察到的自发路径——所以把它做成正式的一层，而不是兜底。
+- **kb-probe.mjs**：用真实会话日志验证机制是否被触发；`kb-health` 只能证明库是干净的，
+  证明不了模型照做了。
+
 ## License
 
 MIT — see [LICENSE](./LICENSE).
@@ -234,7 +261,10 @@ MIT — see [LICENSE](./LICENSE).
 | --- | --- |
 | `safe-edit.ps1` | 五步安全编辑：备份 → **写盘前先断言** → 显式 UTF-8 写盘 → 严格校验 → 失败整体还原。每种失败一个独立退出码。 |
 | `scan-secrets.ps1` | 四路 × 上下文锚定的敏感串扫描（HEAD / 全历史 / 磁盘未跟踪文件 / 提交身份）。`-SelfTest` 真阳性与真阴性双向验证。 |
-| `kb-health.ps1` | 一条命令出体检报告：目录税、复核状态与 90 天过期、条目体积、悬空指针、**逐文件** ENV-005 不变式、债务、**退役候选**、索引一致性。 |
+| `kb-health.ps1` | 一条命令出体检报告：目录税、复核状态与 90 天过期、条目体积、悬空指针、**逐文件** ENV-005 不变式、债务（含缺 `作用域`）、**退役候选**、**索引新鲜度**。 |
+| `kb-index.ps1` | 从域文件重建 `references/index.md` 与各域头条目清单（`-Apply`），或只判新鲜度（`-Check`）。索引是**生成物**：9 行路由，不随条目数增长。 |
+| `inbox-add.ps1` | 往 `<workspace>/.dsh/inbox.md` 追加**一行**：踩坑**当时**能落盘的最低门槛。写在工作区内，无需批准。 |
+| `kb-probe.mjs` | 读真实会话日志（zstd 多 frame），报告钩子有没有触发、技能有没有被加载、inbox/pending 有没有被写。**唯一能证伪「机制生效」的工具**。 |
 | `verify-kb.ps1` | 执行 `references/verify-checks.json` 里的可执行判据，输出 OK / FAIL / MANUAL，并检查悬空检查项与未知占位符。 |
 | `dedup-scan.ps1` | 把候选条目与全部技能的 `(name, description, whenToUse)` 打分，让「该并入谁」由计算得出而不是肉眼看。 |
 | `promote-pending.ps1` | 闭合暂存回路：把 `.dsh/pending-pitfalls.md` 里的条目并入正确的域文件 → 更新记账 → 跑校验。 |

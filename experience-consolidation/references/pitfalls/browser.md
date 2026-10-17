@@ -4,6 +4,13 @@
 > 条目格式（现象 / 触发条件 / 根因 / 方案 / 验证信号，另加「适用环境」「最后验证」）与体量上限见 `../../SKILL.md`。
 > **一事一主**：正文以某独立技能为准的条目，本文件只留摘要与指针。
 
+> 症状：浏览器 / Edge / 无头 / 调试端口 / GUI / 挂死
+
+<!-- ec-ids:begin（生成物：scripts/kb-index.ps1，勿手改）-->
+- ENV-001 · Windows 下 PowerShell 不等待 GUI 程序
+- ENV-007 · 无头浏览器叠加调试端口会常驻不退，`Start-Process -Wait` 永久挂死
+<!-- ec-ids:end -->
+
 **[ENV-001] Windows 下 PowerShell 不等待 GUI 程序**
 - 适用环境：Windows + 任意 PowerShell ｜ 最后验证：无（初次记录 2026-09）
 - 现象：启动 GUI 程序（浏览器、Electron 应用等）的命令立即返回，随后的检测语句在目标尚未就绪时执行，得到假阴性结果（如“白屏”“无输出”）。

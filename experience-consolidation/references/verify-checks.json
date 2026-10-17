@@ -96,6 +96,10 @@
     "ENV-030": {
       "kind": "manual",
       "note": "沙箱内必挂、放宽后必通，需两种沙箱模式各测一次，无法在单一进程内自动断言（判据：HTTP 通 + HTTPS 全挂 + TCP 到 443 能连）"
+    },
+    "ENV-031": {
+      "kind": "manual",
+      "note": "需在 workspace-write（非 danger-full-access）会话下用子进程分别写工作区根与已存在子目录对照，才能复现「根成功、子目录 Permission denied」"
     }
   }
 }

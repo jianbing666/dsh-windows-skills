@@ -1,5 +1,5 @@
-# 第三方导入 bundle：体积大（含音视频/图片），不纳入版本控制
-drawio-skill-main/
-video-podcast-maker-main/
-# 版本控制之前的备份做法
 *.bak-*
+*.tmp
+*.tmp.*
+Thumbs.db
+.DS_Store

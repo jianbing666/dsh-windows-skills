@@ -9,3 +9,9 @@
 > 因此不做静默自动搬移；搬走后 `../index.md` 的域文件列标记为 `pitfalls/archive.md`。
 
 _（暂无）_
+
+> 症状：退役区（不参与常规阅读）
+
+<!-- ec-ids:begin（生成物：scripts/kb-index.ps1，勿手改）-->
+- （本域暂无条目）
+<!-- ec-ids:end -->

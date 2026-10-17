@@ -4,6 +4,15 @@
 > 条目格式（现象 / 触发条件 / 根因 / 方案 / 验证信号，另加「适用环境」「最后验证」）与体量上限见 `../../SKILL.md`。
 > **一事一主**：正文以某独立技能为准的条目，本文件只留摘要与指针。
 
+> 症状：MSIX / Store / Appx / 0x80071770 / 快捷方式 / 搬家
+
+<!-- ec-ids:begin（生成物：scripts/kb-index.ps1，勿手改）-->
+- ENV-015 · WindowsApps 打包应用必须由桌面会话代理激活，直接 `Start-Proces…
+- ENV-019 · 非系统盘 Appx 卷被 EFS 加密：从安装包往外复制一律失败（0x80071770）
+- ENV-020 · 打包桌面应用「有进程、无窗口、CPU 空转」：先看它是不是在搬运行时，别杀进程
+- ENV-021 · MSIX/Store 应用没有桌面快捷方式；快捷方式图标别用带版本号的 WindowsA…
+<!-- ec-ids:end -->
+
 **[ENV-015] WindowsApps 打包应用必须由桌面会话代理激活，直接 `Start-Process` 必失败**
 - 适用环境：Windows 10/11 + Appx/MSIX ｜ 最后验证：见 `windows-msix-app-repair`（本库未独立复核）
 - 症状 → 处置：`Start-Process` 直启 WindowsApps 里的 MSIX exe → 立即返回、**无进程存活**、`-PassThru` 的 `ExitCode = -36863 (0x6FF9)`，同一 exe 由用户点击却正常 → 宿主进程无交互式桌面会话，AppModel 激活失败并静默退出；解法是**经 explorer 代理激活**：`Start-Process explorer.exe -ArgumentList '"<WindowsApps 下 exe 全路径>"'`（沙箱下 `shell:AppsFolder\<PFN>!<AppId>` 直接启动会报 `cannot find the file specified`）。详见 `windows-msix-app-repair`。

@@ -4,6 +4,16 @@
 > 条目格式（现象 / 触发条件 / 根因 / 方案 / 验证信号，另加「适用环境」「最后验证」）与体量上限见 `../../SKILL.md`。
 > **一事一主**：正文以某独立技能为准的条目，本文件只留摘要与指针。
 
+> 症状：沙箱 / 权限拒绝 / 命名管道 / 白屏 / HTTPS / 403
+
+<!-- ec-ids:begin（生成物：scripts/kb-index.ps1，勿手改）-->
+- ENV-002 · 沙箱禁止创建命名管道（piped stdio）
+- ENV-006 · 沙箱禁止命名管道会击穿 Chromium/Electron 的渲染进程（表现为「白屏」）
+- ENV-009 · DSH 桌面端 `/api/desktop/*` 有 renderer token 闸门…
+- ENV-030 · DSH 沙箱内一切 HTTPS 都失败：schannel 拿不到凭据、openssl 后…
+- ENV-031 · 受限沙箱下子进程写不了工作区子目录 / `.git`，`mkdtemp` 目录写不进也删…
+<!-- ec-ids:end -->
+
 **[ENV-002] 沙箱禁止创建命名管道（piped stdio）**
 - 适用环境：DSH 沙箱（workspace-write 及更严） ｜ 最后验证：无（初次记录 2026-09）
 - 现象：以默认 `stdio: 'pipe'` 启动子进程并捕获其输出时，报 `EPERM`（如 Node.js `child_process.spawn/exec`）。
@@ -31,3 +41,10 @@
 - 根因：沙箱进程令牌拿不到 Schannel 客户端凭据，失败发生在「建凭据」阶段——**既不是墙、不是 DNS、更不是网络**；而 Git for Windows 的 OpenSSL 路径要经 `sh.exe`，恰好撞上命名管道禁令，于是**两条 TLS 路径都被沙箱掐死**。
 - 最终方案：把该命令放到 **`danger-full-access`** 下执行（实测放宽后 `baidu`/`example` 立即 200、`git ls-remote` 走完 TLS）。**绝不**按「境外源不稳」去换网络——那会把排查引向错路（ENV-011 把三种报错并列，就埋了这个坑）；另有中间人/加速器证书场景需 `git config http.schannelCheckRevoke false`（否则 `CRYPT_E_NO_REVOCATION_CHECK`），但那是**放宽沙箱之后**才会遇到的第二层。
 - 验证信号：沙箱内 `curl -o NUL -w "%{http_code}" https://www.baidu.com` 得 `000`（exit 35）**且** `http://example.com` 得 `200` → 即判为沙箱而非网络；放宽沙箱后**同一条命令**变 `200`。判据是「HTTP 通 + HTTPS 全挂 + TCP 到 443 能连」这个组合，单看任一列都会误判。
+
+**[ENV-031] 受限沙箱下子进程写不了工作区子目录 / `.git`，`mkdtemp` 目录写不进也删不掉**
+- 适用环境：DSH 沙箱（workspace-write）+ Windows ｜ 最后验证：2026-10-15（本机实测，多次复现）
+- 现象：同一会话内，子进程写**工作区根**成功、写**子目录**（如 `pyside6/`）`Permission denied`；`git add` 报 `.git/index.lock` 拒绝；而 harness 的 write/edit 能写同一子目录；`tempfile.mkdtemp()` 的目录写不进、`icacls` 处理失败、删不掉。
+- 根因：子进程是**低完整性令牌**，写入靠工作区根上的 `S-1-4-*` 授权项；早于授权创建的子目录没继承到它，只剩 `Authenticated Users:(M)` 不足以放行（`.git` 同理）；harness 文件工具走另一条授权路径，故「harness 能写 ≠ 子进程能写」。`mkdtemp` 给新目录设了**仅所有者的受保护 DACL**。
+- 方案：切 **danger-full-access**（实测立即恢复）；或让子进程只写工作区根及其下新建目录（`TEMP`/`POTSNIP_CONFIG_DIR` 指过去）。工作区内意外拒绝可交给 `diagnose-windows-sandbox-acl`；`mkdtemp` 那条不适用（不是缺授权项）。
+- 验证信号：受限态对根与子目录各写一个测试文件 → **根成功、子目录拒绝**且 `git add` 报 `index.lock`；放宽后同路径同命令成功。

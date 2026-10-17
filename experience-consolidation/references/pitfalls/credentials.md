@@ -4,6 +4,15 @@
 > 条目格式（现象 / 触发条件 / 根因 / 方案 / 验证信号，另加「适用环境」「最后验证」）与体量上限见 `../../SKILL.md`。
 > **一事一主**：正文以某独立技能为准的条目，本文件只留摘要与指针。
 
+> 症状：密钥 / 凭据 / 401 / 环境变量 / 分账
+
+<!-- ec-ids:begin（生成物：scripts/kb-index.ps1，勿手改）-->
+- ENV-013 · 凭据解析优先级：继承环境 > 凭据文件 > `.env`（导致「密钥看起来没生效」）
+- ENV-014 · DeepSeek 接口会偶发返回 401，不要把单次 401 当成 key 失效
+- ENV-017 · 读「运行中进程的真实环境」是排查密钥/变量类问题的唯一硬证据
+- ENV-018 · 多应用共用同一个帐户时，按 key 分账要靠「不同的 key 名」，不是「不同的 key…
+<!-- ec-ids:end -->
+
 **[ENV-013] 凭据解析优先级：继承环境 > 凭据文件 > `.env`（导致「密钥看起来没生效」）**
 - 适用环境：DSH 凭据层（跨平台） ｜ 最后验证：无（初次记录 2026-09）
 - 症状 → 处置：`.credentials.yaml` 里存着 key A，实际调用却全用环境变量里的 key B（key A 显示「0 调用」、费用记在 key B）→ 根因是 `@deepseek-ai/dsh-credentials-local` 的 `resolve()` 顺序 **inherited(process env, 只读) → `$DSH_HOME/.credentials.yaml` → 项目 `.env` → `$DSH_HOME/.env`**（`lib/index.js:14-28,473-489`），继承环境压过凭据文件，被遮蔽的引用连 `set()` 都拒绝（`assertUnshadowed`，第 636 行）。**彻底隔离：给每个应用不同的凭据名**——DSH 侧改 `settings.yaml` 的 `llm-deepseek.apiKeyEnv`（默认 `DEEPSEEK_API_KEY`，热生效不必重启）并把新 key 加进 `.credentials.yaml` 的 `refs`；另一应用改自己的 `env_key`；最后删掉共享变量。
